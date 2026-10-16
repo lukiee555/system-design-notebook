@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: inverted index and full-text search.">
+  <title>Inverted Index | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="inverted-index">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Inverted Index</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Database Indexing</p>
+          <h1>Inverted Index (Full-Text Search)</h1>
+          <p>Flip document → terms into term → documents. Posting lists power keyword, Boolean, phrase, and ranked search.</p>
+          <div class="hero-meta"><span class="pill">Analyzers</span><span class="pill">Posting lists</span><span class="pill">BM25</span><span class="pill">Outbox / CDC</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:760px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/inverted-index/inverted-index-query-flow.webp" aria-label="Open the inverted index flow sheet">
+            <img src="../assets/media/topics/inverted-index/inverted-index-query-flow.webp" width="1400" height="1758" loading="eager" decoding="async" alt="Inverted index build with analyzers and posting lists, Boolean and phrase queries, ranking, partitioning, freshness, and recovery.">
+          </a>
+          <figcaption>Inverted index build and query flow (tap for full size)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Term → posting list of <code>(doc_id, frequency, positions, field)</code>.</li>
+                <li>AND = intersect (smallest list first), OR = union, phrase = check positions.</li>
+                <li>Index-time and search-time analyzers must match.</li>
+                <li>DB stays source of truth; outbox/CDC feeds the search index; rebuild from source.</li>
+                <li>Shard by document (fan-out + merge top-K) or by term.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="build">
+              <div class="section-heading"><div><h2>Build and query</h2></div></div>
+              <pre>D1: "database indexing makes search fast"
+D2: "indexing improves query performance"
+D3: "search engines use an inverted index"
+
+indexing → [D1, D2]     search → [D1, D3]     index → [D3]</pre>
+              <ul class="lead-list">
+                <li><strong>Analysis -</strong> normalize, tokenize, lowercase, stem/lemmatize, stop words, synonyms, language rules.</li>
+                <li><strong>Postings -</strong> positions enable phrase/proximity; term stats drive BM25 ranking.</li>
+                <li><strong>Queries -</strong> single term = read list; AND intersect; OR union + dedupe; NOT subtract carefully; phrase verify positions; ranking blends relevance, boosts, freshness, business signals.</li>
+                <li><strong>Analyzer change -</strong> new index → reindex from source → validate → switch alias → retire old.</li>
+                <li><strong>Distribution -</strong> document sharding, term sharding, or hybrid (tenant/language/time, then documents). Delta-encode sorted IDs to compress.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="db-vs-engine">
+              <div class="section-heading"><div><h2>Database full-text vs search engine</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>DB-native -</strong> moderate scale, transactional simplicity, limited features, one system to run.</li>
+                <li><strong>Elasticsearch/OpenSearch/Solr -</strong> relevance tuning, many fields/facets/aggregations, independent scaling, eventual consistency OK.</li>
+                <li><strong>Safe sync -</strong> DB transaction writes data + outbox → CDC consumer updates index → monitor lag → rebuild when needed. No naive dual writes.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Database full-text index</td><td>Fewer systems, simpler consistency</td><td>Less scale and relevance flexibility</td></tr>
+                    <tr><td>External search engine</td><td>Rich analysis, ranking, facets, independent scaling</td><td>Lag, replay, reconciliation, more ops</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Search misses expected docs -</strong> analyzer mismatch → version analyzers, test tokens, reindex + alias switch.</li>
+                <li><strong>DB and search disagree -</strong> dual writes or lost events → outbox/CDC, idempotent consumers, DLQ, lag alerts, rebuild.</li>
+                <li><strong>Multi-keyword search slow -</strong> big lists intersected badly → smallest first, skip/galloping, compression, top-K early exit.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Coupang L6 (Oct 2026): product reviews searchable by keyword.</summary><p>Review DB is source of truth; outbox/CDC builds an inverted index asynchronously. Compressed posting lists (IDs, frequencies, positions), document shards, intersect/union, filter by product/rating/language, rank, merge top-K. Idempotent consumers, lag monitoring, DLQ, rebuild from DB.</p></details>
+                <details class="recall-card"><summary>Uber SDE-2: billions of messages - retrieve IDs for one or more keywords.</summary><p>Inverted index of normalized terms → compressed sorted posting lists of message IDs. AND = intersect smallest first, OR = union, phrase = positions. Shard by document or term, replicate, merge top-K; messages stored separately; durable log feeds updates; support rebuild.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#build">Build and query</a></li><li><a href="#db-vs-engine">DB vs search engine</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>The search index is derived state. If you can't rebuild it from the source, it's wrong.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

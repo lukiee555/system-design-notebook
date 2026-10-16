@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: leader election.">
+  <title>Leader Election | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="leader-election">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Leader Election</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · System Design Fundamentals</p>
+          <h1>Leader Election</h1>
+          <p>Pick exactly one coordinator for writes, scheduling, metadata, or a replicated log - and make sure a stale one can't keep acting.</p>
+          <div class="hero-meta"><span class="pill">Heartbeats</span><span class="pill">Terms &amp; quorum</span><span class="pill">Fencing</span><span class="pill">Split brain</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="visual">
+              <div class="section-heading"><div><h2>Cheat sheet</h2></div></div>
+              <figure class="media-frame">
+                <a href="../assets/media/topics/leader-election/leader-election-cheat-sheet.webp" aria-label="Open the full-size cheat sheet">
+                  <img src="../assets/media/topics/leader-election/leader-election-cheat-sheet.webp" width="1536" height="1024" loading="eager" decoding="async" alt="Leader election cheat sheet: purpose, election flow, algorithms, ZooKeeper example, failover, quorum, and split-brain considerations.">
+                </a>
+                <figcaption>Purpose, election flow, algorithms, failover, quorum, and split brain (tap for full size).</figcaption>
+              </figure>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Followers receive leader heartbeats; on election timeout a follower becomes a candidate.</li>
+                <li>Candidate increments the term, votes for itself, requests votes; a majority winner becomes leader.</li>
+                <li>Only a majority partition can elect a leader - no quorum, no leader.</li>
+                <li>Terms/epochs + fencing tokens stop stale leaders from writing.</li>
+                <li>Modern Kafka uses a KRaft controller quorum (older versions used ZooKeeper).</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="design-checklist">
+              <div class="section-heading"><div><h2>Design checklist</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Requirements -</strong> leader responsibility, failover target, tolerated failures, consistency, partition behavior.</li>
+                <li><strong>Estimation -</strong> cluster size, heartbeat interval, election timeout, quorum latency.</li>
+                <li><strong>High-level design -</strong> replicas + consensus group + leader registry; the leader coordinates and replicates state.</li>
+                <li><strong>Deep dives -</strong> split votes, split brain, fencing tokens, stale leaders, log freshness, flapping, membership changes, no-quorum behavior.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Short election timeout</td><td>Faster failover</td><td>False elections, leader flapping</td></tr>
+                    <tr><td>Leader-based coordination</td><td>Simple ordering, single write authority</td><td>Leader bottleneck, unavailable during election</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Leader stops heartbeating -</strong> new term, majority vote, recover the replicated log, resume.</li>
+                <li><strong>Isolated old leader keeps writing -</strong> term/epoch validation and fencing tokens reject it.</li>
+                <li><strong>Leader flapping -</strong> randomized election timeouts, pre-vote, backoff, fix the network.</li>
+                <li><strong>Cluster loses quorum -</strong> stop leader-controlled writes and restore a majority; never elect a minority leader.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Kotak SDE2 (2026): how does leader election work in practice, and what does it solve?</summary><p>Missed heartbeats trigger an election. A candidate starts a new term and needs majority votes; the winner is the single coordinator. Terms, quorum, and fencing prevent stale or dual leaders.</p></details>
+                <details class="recall-card"><summary>Uber L5 (2026): design Kafka.</summary><p>Partition topics by key; each partition has a leader and followers. Producers write to leaders, consumers track offsets. Replication + in-sync replicas protect data; the KRaft controller quorum manages metadata and controller elections.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#visual">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#design-checklist">Design checklist</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>Majority elects, term orders, fencing protects.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

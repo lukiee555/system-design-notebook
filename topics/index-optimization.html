@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: index optimization patterns - composite, covering, partial, expression.">
+  <title>Index Optimization Patterns | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="index-optimization">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Index Optimization</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Database Indexing</p>
+          <h1>Index Optimization Patterns</h1>
+          <p>Design indexes from real query shapes - composite, covering, partial, expression - then prove them with the plan.</p>
+          <div class="hero-meta"><span class="pill">Composite order</span><span class="pill">Covering</span><span class="pill">Partial</span><span class="pill">Expression</span><span class="pill">Cursor pagination</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:760px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/index-optimization/composite-covering-index-patterns.webp" aria-label="Open the composite and covering index patterns sheet">
+            <img src="../assets/media/topics/index-optimization/composite-covering-index-patterns.webp" width="1400" height="1836" loading="eager" decoding="async" alt="Query-first index design, composite key ordering, separate versus composite versus covering indexes, partial and expression indexes, and plan verification.">
+          </a>
+          <figcaption>Composite and covering index patterns (tap for full size)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Start from the query: filters, joins, ranges, sort, returned columns, limit, match count, frequency.</li>
+                <li>Composite order: <strong>equality → range/order → extra filters → payload</strong>.</li>
+                <li>Covering (<code>INCLUDE</code>) can skip table fetches; MVCC may still visit the heap.</li>
+                <li>Partial index for a small hot subset; expression index for <code>lower(email)</code>.</li>
+                <li>Keep keys narrow; use cursor pagination, not large <code>OFFSET</code>.</li>
+                <li>Build big indexes online and watch replicas.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="patterns">
+              <div class="section-heading"><div><h2>Patterns</h2></div></div>
+              <pre>-- feed: tenant, newest first, cursor
+CREATE INDEX idx_posts_tenant_time
+  ON posts (tenant_id, created_at DESC)
+  INCLUDE (post_id, status, total);</pre>
+              <ul class="lead-list">
+                <li><strong>Composite -</strong> <code>(user_id, created_at DESC)</code> serves <code>WHERE user_id = ? ORDER BY created_at DESC</code>. "Leftmost prefix" is a heuristic; some engines skip-scan, but match the recurring query.</li>
+                <li><strong>Separate vs composite -</strong> <code>INDEX(A)</code> + <code>INDEX(B)</code> means bitmap intersect and lost order but reusable for A-only/B-only; <code>INDEX(A,B)</code> wins for frequent <code>A AND B</code>.</li>
+                <li><strong>Covering -</strong> payload columns avoid random row fetches; cost: bigger index, heavier writes, cache pressure. Check <code>Heap Fetches</code>.</li>
+                <li><strong>Partial -</strong> <code>ON jobs(created_at) WHERE status = 'PENDING'</code>. Query predicate must imply the index predicate.</li>
+                <li><strong>Expression -</strong> <code>ON users(lower(email))</code> for <code>WHERE lower(email) = ?</code>; collation and casts must match.</li>
+                <li><strong>Narrow keys -</strong> more entries per page, higher fan-out, less WAL, cheaper secondaries.</li>
+                <li><strong>Pagination -</strong> <code>WHERE (created_at, id) &lt; (?, ?) ORDER BY created_at DESC, id DESC LIMIT 50</code> with a matching index; <code>id</code> breaks ties.</li>
+                <li><strong>Health -</strong> monitor usage, size, bloat, page splits, cache hit, WAL, estimate accuracy, unused/redundant indexes. Rebuild on evidence.</li>
+                <li><strong>Safe build -</strong> estimate size/temp disk, online/concurrent build, know lock phases, throttle, watch replica lag, validate plan, drop redundant indexes later.</li>
+              </ul>
+              <p>Basics: <a href="db-indexing.html">How Indexes Work</a>. Schema context: <a href="schema-design.html">Schema Design</a>.</p>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Separate single-column indexes</td><td>Flexible; optimizer may combine</td><td>Multiple scans, set ops, lost order</td></tr>
+                    <tr><td>Composite index</td><td>One traversal for a recurring multi-column query</td><td>Order-sensitive; less reusable</td></tr>
+                    <tr><td>Narrow index</td><td>Fan-out, cache locality, cheap writes</td><td>Extra fetches for other columns</td></tr>
+                    <tr><td>Covering index</td><td>May skip heap fetches</td><td>Larger, heavier writes; MVCC heap checks</td></tr>
+                    <tr><td>Full index</td><td>Handles every row</td><td>Wasteful for a small queried subset</td></tr>
+                    <tr><td>Partial index</td><td>Small and cheap for a hot subset</td><td>Query must imply the predicate</td></tr>
+                    <tr><td>Online/concurrent build</td><td>Less blocking</td><td>Slower, more I/O, extra phases</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Composite ignored -</strong> leading order doesn't match → equality first, then range/order.</li>
+                <li><strong>Function-wrapped predicate -</strong> index on <code>email</code>, query on <code>lower(email)</code> → expression index or normalize.</li>
+                <li><strong>Boolean/status index useless -</strong> low selectivity → partial index or combine with a selective key.</li>
+                <li><strong>Index-only scan still hits heap -</strong> visibility unknown → healthy vacuum, slow-changing tables.</li>
+                <li><strong>Covering index too big -</strong> include only narrow, frequently returned columns.</li>
+                <li><strong>Later pages slower -</strong> <code>OFFSET</code> scans and discards → keyset pagination.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Zomato: separate indexes on A and B - how does <code>WHERE A=10 AND B=20</code> run? Is <code>(A,B)</code> better?</summary><p>Optimizer uses the more selective index and filters, or intersects two bitmaps before fetching. <code>(A,B)</code> seeks directly to the contiguous range and keeps order - usually better for a frequent combined predicate; separate indexes serve A-only/B-only queries. Compare plans.</p></details>
+                <details class="recall-card"><summary>Atlassian P40 (2025): show the author's friend count on every post at huge scale.</summary><p>Don't <code>COUNT(*)</code> per render. Index both relationship directions, keep a materialized <code>friend_count</code> per user (transactional or idempotent events), cache hot counts, reconcile periodically, batch-fetch counts for all authors.</p></details>
+                <details class="recall-card"><summary>Design an index for a per-user feed with cursor pagination.</summary><p><code>(user_id, created_at DESC, post_id DESC)</code>; include narrow output columns only if index-only scans matter. <code>post_id</code> makes pagination deterministic.</p></details>
+                <details class="recall-card"><summary>Roll out a new index on a billion-row table.</summary><p>Estimate disk/WAL headroom, online/concurrent build, watch locks, I/O, CPU, write latency, replicas, temp space; validate the plan; enable gradually; drop redundant indexes after observing.</p></details>
+                <details class="recall-card"><summary>Why not index every column?</summary><p>Each index costs storage and write maintenance, plus planning choices, cache pressure, WAL, and backup size. Index only real query value.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#patterns">Patterns</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>Equality first, then range and sort. Then check the plan.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

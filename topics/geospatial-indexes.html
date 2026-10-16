@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: geospatial indexes - geohash, quadtree, R-tree.">
+  <title>Geospatial Indexes | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="geospatial-indexes">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Geospatial Indexes</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Database Indexing</p>
+          <h1>Geospatial Indexes</h1>
+          <p>Preserve two-dimensional locality to find nearby things - then always confirm with an exact distance check.</p>
+          <div class="hero-meta"><span class="pill">Geohash</span><span class="pill">Quadtree</span><span class="pill">R-tree / GiST</span><span class="pill">Nearby search</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:760px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/geospatial-indexes/geospatial-index-approaches.webp" aria-label="Open the geospatial index approaches sheet">
+            <img src="../assets/media/topics/geospatial-indexes/geospatial-index-approaches.webp" width="1400" height="1774" loading="eager" decoding="async" alt="Geohash, quadtree, and R-tree/GiST approaches with a nearby-restaurants query flow and failure considerations.">
+          </a>
+          <figcaption>Geohash, quadtree, R-tree and the nearby-search flow (tap for full size)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Separate lat/lon indexes don't preserve 2D proximity; a box is not a radius.</li>
+                <li>Flow: spatial candidate search → exact distance → business filters → rank + limit.</li>
+                <li><strong>Geohash</strong> - sortable cell prefix; query the cell <em>and neighbours</em>.</li>
+                <li><strong>Quadtree</strong> - splits dense areas; adapts to uneven density.</li>
+                <li><strong>R-tree/GiST</strong> - bounding rectangles for any geometry; overlaps hurt pruning.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="approaches">
+              <div class="section-heading"><div><h2>Approaches</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Geohash -</strong> encodes lat/lon into one hierarchical string; nearby points often share a prefix (<code>dr5ru6j</code>, <code>dr5ru6k</code>). Easy prefix queries, sharding, caching by cell. Costs: boundaries, fixed grid, precision trade-off, poles/longitude wrap.</li>
+                <li><strong>Quadtree -</strong> recursively splits a region into four; busy cells split further. Good for uneven density, radius candidates, maps. Costs: deep hotspot branches, rebalancing, skewed distributed ownership. (PostgreSQL SP-GiST can model it.)</li>
+                <li><strong>R-tree / GiST -</strong> groups points, lines, polygons by minimum bounding rectangles; prunes non-intersecting branches. Supports containment, overlap, nearest-neighbour (PostGIS). Costs: overlapping MBRs, large/irregular shapes, exact recheck.</li>
+                <li><strong>Earth vs plane -</strong> Cartesian, spherical, ellipsoidal, or road travel time? It changes type, operator, correctness, and speed. State it.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Geohash</td><td>Simple sortable prefix; easy sharding/cache cells</td><td>Boundary and fixed-grid precision problems</td></tr>
+                    <tr><td>Quadtree</td><td>Adapts to point density</td><td>Deep/skewed trees, distributed rebalancing</td></tr>
+                    <tr><td>R-tree / GiST</td><td>Rich geometry, intersection, containment, kNN</td><td>Overlapping boxes reduce pruning; exact recheck</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Geohash misses nearby records -</strong> only the current cell queried → include neighbours + exact distance.</li>
+                <li><strong>Geohash reads too many candidates -</strong> precision too coarse → finer cells or adaptive structure.</li>
+                <li><strong>Quadtree hot/deep branch -</strong> extreme density → cap depth, capacity-aware splits, shard hot cells.</li>
+                <li><strong>R-tree visits many branches -</strong> heavy MBR overlap → better partitioning or operator; expect exact filtering.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Which spatial index for "restaurants within 5 km"?</summary><p>Geohash for simple cell routing/sharding, quadtree for very uneven density, R-tree/GiST for rich geometry and kNN. Always finish with an exact geographic distance predicate.</p></details>
+                <details class="recall-card"><summary>Why aren't two B-tree indexes on latitude and longitude enough?</summary><p>Two 1D orders don't preserve 2D proximity; they give a rectangular candidate set, not a radius, and miss boundary effects.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#approaches">Approaches</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>The index finds candidates. The distance check decides the answer.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

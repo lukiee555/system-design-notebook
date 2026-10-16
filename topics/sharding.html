@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: sharding and shard key selection.">
+  <title>Sharding and Shard Keys | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="sharding">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Sharding and Shard Keys</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Data Modeling</p>
+          <h1>Sharding and Shard Keys</h1>
+          <p>Shard only when one well-tuned database can't keep up - and pick a key that keeps the dominant query and transaction on one shard.</p>
+          <div class="hero-meta"><span class="pill">When to shard</span><span class="pill">Shard key</span><span class="pill">Hot shards</span><span class="pill">Cross-shard cost</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="visual">
+              <div class="section-heading"><div><h2>Cheat sheets</h2><p>Tap for full size.</p></div></div>
+              <div class="card-grid">
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/sharding/shard-key-selection.webp" aria-label="Open shard key selection">
+                    <img src="../assets/media/topics/sharding/shard-key-selection.webp" width="1280" height="1750" loading="eager" decoding="async" alt="Hashing by the dominant access key versus the hot-shard risk of time-only ranges.">
+                  </a>
+                  <figcaption>Shard key selection</figcaption>
+                </figure>
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/sharding/sharding-constraints.webp" aria-label="Open sharding constraints">
+                    <img src="../assets/media/topics/sharding/sharding-constraints.webp" width="1280" height="1750" loading="eager" decoding="async" alt="Cross-shard fan-out, distributed transactions, hot keys, secondary access patterns, and resharding.">
+                  </a>
+                  <figcaption>Sharding constraints</figcaption>
+                </figure>
+              </div>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Shard only after capacity math proves one DB + replicas is not enough.</li>
+                <li>Shard key = dominant access pattern: <code>user_id</code> for user-scoped, <code>tenant_id</code> for isolated tenants.</li>
+                <li>Hashing the key spreads load but makes global range queries harder.</li>
+                <li>Avoid time-only sharding for write-heavy current data - the newest shard gets hot.</li>
+                <li>Avoid cross-shard queries and transactions; co-locate data for one invariant.</li>
+                <li>Treat the shard key as nearly permanent.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="key-ideas">
+              <div class="section-heading"><div><h2>Key ideas</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Before sharding -</strong> query tuning, indexes, cache, replicas, partitioning, connection pooling, vertical scaling.</li>
+                <li><strong>Good key -</strong> high cardinality, even storage and traffic, keeps the dominant query and transaction boundary on one shard.</li>
+                <li><strong>Time ranges -</strong> fine for archival, retention, analytics; dangerous when all active writes hit the latest range.</li>
+                <li><strong>Cross-shard cost -</strong> fan-out adds network work, tail latency, merge/sort cost, and partial failures.</li>
+                <li><strong>Permanence -</strong> the key shapes routing, locality, transactions, joins, indexes, resharding, and every future query.</li>
+                <li><strong>Global queries -</strong> with <code>user_id</code> sharding, global feed/search need precomputation or a separate index.</li>
+              </ul>
+              <p>Hash and ring basics: <a href="hashing.html">Hashing</a>, <a href="consistent-hashing.html">Consistent Hashing</a>.</p>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Hash sharding</td><td>Even distribution, predictable routing</td><td>Poor range scans, expensive global queries</td></tr>
+                    <tr><td>Range/time sharding</td><td>Efficient bounded ranges and retention</td><td>Skew, hot newest partition</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Sharding before proving a bottleneck -</strong> tune, cache hot reads, add replicas, do capacity math.</li>
+                <li><strong>Low-cardinality key -</strong> choose high cardinality with even traffic.</li>
+                <li><strong>Sharding only by current time -</strong> hash or bucket an extra dimension.</li>
+                <li><strong>Normal requests fan out to every shard -</strong> co-locate, precompute, or keep a separate query index.</li>
+                <li><strong>One invariant split across shards -</strong> redesign the boundary or accept saga/2PC complexity.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>When should the database be sharded?</summary><p>After query tuning, indexes, cache, replicas, partitioning, pooling, and vertical scaling are insufficient according to capacity measurements.</p></details>
+                <details class="recall-card"><summary>How do you choose a shard key?</summary><p>High cardinality, even storage and traffic, and the dominant query + transaction boundary stays on one shard.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#visual">Cheat sheets</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#key-ideas">Key ideas</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>Discuss cross-shard queries and resharding before you pick the key, not after.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

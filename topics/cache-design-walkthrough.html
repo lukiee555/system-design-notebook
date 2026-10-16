@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: designing a product-details cache - requirements, estimation, flows.">
+  <title>Cache Design Walkthrough | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="cache-design-walkthrough">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Cache Design Walkthrough</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Caching in Depth</p>
+          <h1>Cache Design Walkthrough: Product Details</h1>
+          <p>Applying everything to a 50K read-QPS product page: requirements, estimation, per-field policy, and read/write/outage flows.</p>
+          <div class="hero-meta"><span class="pill">Requirements</span><span class="pill">Estimation</span><span class="pill">Per-field TTL</span><span class="pill">Single-flight</span><span class="pill">Outbox invalidation</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Different fields, different freshness: metadata 10 min, price 30-60 s, browse stock 2-5 s, checkout = source.</li>
+                <li>50K QPS, 80% cacheable, 95% hits → origin still sees <strong>12K QPS</strong>; size the DB for that plus failure headroom.</li>
+                <li>10M keys × 2.2 KB × RF 2 ÷ 70% ≈ 63 GB → provision ~80 GB.</li>
+                <li>Read: L1 → L2 → single-flight → DB → CAS fill with version + jittered TTL.</li>
+                <li>Write: DB + outbox in one transaction → versioned invalidation → return version token.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="requirements">
+              <div class="section-heading"><div><h2>Requirements → decisions</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Ask</th><th>Answer</th><th>Decision</th></tr></thead>
+                  <tbody>
+                    <tr><td>Peak reads / writes?</td><td>50K / 500 QPS (100:1)</td><td>Shared L2, optional L1; cache-aside</td></tr>
+                    <tr><td>Latency?</td><td>Page p99 &lt; 50 ms; cache &lt; 5 ms</td><td>In-region L2, compact values</td></tr>
+                    <tr><td>One TTL for all fields?</td><td>No</td><td>Separate metadata, price, stock, recs keys</td></tr>
+                    <tr><td>Seller read-after-write?</td><td>Yes</td><td>Session bypass or min-version token</td></tr>
+                    <tr><td>Traffic skew?</td><td>Flash sale 1,000×</td><td>L1, hot-key replication, single-flight, CDN</td></tr>
+                    <tr><td>Cache loss?</td><td>Degrade OK, DB overload not</td><td>Bounded fallback, stale, shedding</td></tr>
+                    <tr><td>Multi-region?</td><td>Local reads, home-region writes</td><td>Regional caches, versioned async invalidation</td></tr>
+                    <tr><td>Personalized fields?</td><td>Some</td><td>Scope in key or don't share</td></tr>
+                    <tr><td>Invalid IDs common?</td><td>Yes</td><td>Short negative cache + Bloom filter</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="estimation">
+              <div class="section-heading"><div><h2>Estimation</h2></div></div>
+              <pre>cacheable = 50,000 × 0.80        = 40,000 QPS
+hits      = 40,000 × 0.95        = 38,000 QPS
+misses    = 40,000 × 0.05        =  2,000 QPS
+origin    = 10,000 + 2,000       = 12,000 QPS  (76% offload)
+
+latency (cacheable) = 0.95×2 + 0.05×(2+40+3) ≈ 4.15 ms
+latency (overall)   = 0.80×4.15 + 0.20×40    ≈ 11.3 ms  (average, not p99)
+
+memory  = 10M × 2.2 KB ≈ 22 GB → ×2 RF ≈ 44 GB → ÷0.70 ≈ 63 GB → ~80 GB
+egress  = 38,000 × 2 KB ≈ 76 MB/s
+expiry  = 10M ÷ 3,600 s ≈ 2,778/s (1 h TTL) → jitter + bounded refresh</pre>
+            </section>
+
+            <section class="section-card" id="design">
+              <div class="section-heading"><div><h2>Design and flows</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Data</th><th>Strategy</th><th>TTL</th></tr></thead>
+                  <tbody>
+                    <tr><td>Metadata</td><td>Cache-aside, invalidate on edit</td><td>10 min + jitter</td></tr>
+                    <tr><td>Regional price</td><td>Cache-aside/SWR, versioned CDC</td><td>30-60 s</td></tr>
+                    <tr><td>Browse inventory</td><td>Cache-aside</td><td>2-5 s</td></tr>
+                    <tr><td>Checkout inventory</td><td>Bypass / validate at source</td><td>None</td></tr>
+                    <tr><td>Recommendations</td><td>SWR / refresh-ahead, cache IDs</td><td>60 s</td></tr>
+                    <tr><td>Not found</td><td>Negative cache, invalidate on create</td><td>15-60 s</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <pre style="margin-top:1rem">getProduct(key, minVersion):
+  v = L1.get(key); if usable(v, minVersion): return v
+  v = L2.get(key); if usable(v, minVersion): L1.put(v); return v
+  return singleFlight(key, () =>
+    v = L2.get(key)                       // double-check
+    if usable(v, minVersion): return v
+    row = db.read(key)
+    L2.compareAndSetIfNewer(key, envelope(row, row.version), jitteredTTL)
+    L1.put(key, ..., shortTTL)
+    return row)</pre>
+              <ul class="lead-list">
+                <li><strong>Write -</strong> validate + idempotency key → one transaction: row + outbox with new version → commit → return version → publisher sends at least once → consumers invalidate L2 and broadcast L1 → dedupe by event ID/version → retry, DLQ, alert. TTL is the final safety net.</li>
+                <li><strong>APIs -</strong> <code>GET /v1/products/{id}?region&amp;storeId&amp;locale</code>, <code>PATCH /v1/products/{id}</code>; cache API: <code>get</code>, <code>multiGet</code>, <code>set(value, ttl, version)</code>, <code>delete</code>, CAS.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Microsoft Senior SE (Mar 2026): LRU with TTL, made concurrent.</summary><p>HashMap + doubly linked list for O(1) LRU; min-heap/timing wheel or lazy expiry for TTL; sharded/striped locks with atomic list moves.</p></details>
+                <details class="recall-card"><summary>Walmart (Dec 2024): LLD a modular, scalable cache.</summary><p><code>Cache&lt;K,V&gt;</code>, <code>Storage</code>, <code>EvictionPolicy</code>, <code>Clock</code>, optional <code>Loader</code>; inject LRU/LFU/FIFO. HashMap + DLL for O(1) LRU; sync, TTL, size limits, tests.</p></details>
+                <details class="recall-card"><summary>Amazon: cache latest value per key with timestamped history; nearest-timestamp lookup.</summary><p>Per key, an ordered map by timestamp; O(log n) out-of-order insert; floor/ceiling lookup and choose nearest; define ties, retention, memory bounds, locking.</p></details>
+                <details class="recall-card"><summary>How do you guarantee fresh inventory at checkout?</summary><p>Don't use the browse cache; validate/reserve against the authoritative inventory with idempotency and concurrency control.</p></details>
+                <details class="recall-card"><summary>Should the cache be a REST service?</summary><p>Usually a native client or thin library; a proxy can centralize routing, but a REST wrapper adds hops and serialization. Namespaces prevent collisions.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#estimation">Estimation</a></li><li><a href="#design">Design and flows</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>Size the database for the misses at peak plus failure - not the happy-path hit ratio.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

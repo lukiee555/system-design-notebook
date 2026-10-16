@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: hashing.">
+  <title>Hashing | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="hashing">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Hashing</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · System Design Fundamentals</p>
+          <h1>Hashing</h1>
+          <p>Deterministically map a large input space to a smaller one - for buckets, shards, nodes, dedup, and checksums.</p>
+          <div class="hero-meta"><span class="pill">Collisions</span><span class="pill">Partition keys</span><span class="pill">Hot keys</span><span class="pill">Password hashing</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="visual">
+              <div class="section-heading"><div><h2>Cheat sheet</h2></div></div>
+              <figure class="media-frame">
+                <a href="../assets/media/topics/hashing/hashing-cheat-sheet.webp" aria-label="Open the full-size cheat sheet">
+                  <img src="../assets/media/topics/hashing/hashing-cheat-sheet.webp" width="1536" height="1024" loading="eager" decoding="async" alt="Hashing cheat sheet: hash functions, hash tables, collision handling, consistent hashing, distributed-system use cases, and trade-offs.">
+                </a>
+                <figcaption>Hash functions, hash tables, collisions, consistent hashing, and use cases (tap for full size).</figcaption>
+              </figure>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>A good routing hash is deterministic, fast, uniform, and low-collision.</li>
+                <li>Collisions are always possible: handle with chaining or open addressing.</li>
+                <li>Hashing is not encryption.</li>
+                <li>Routing: fast non-cryptographic hashes. Passwords: Argon2id, scrypt, bcrypt, PBKDF2 - never raw MD5/SHA-1/SHA-256.</li>
+                <li><code>hash(key) % N</code> remaps most keys when N changes → see <a href="consistent-hashing.html">consistent hashing</a>.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="design-checklist">
+              <div class="section-heading"><div><h2>Design checklist</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Requirements -</strong> speed, distribution, adversarial resistance, collision tolerance.</li>
+                <li><strong>Estimation -</strong> bucket count, load factor, expected key skew.</li>
+                <li><strong>High-level design -</strong> <code>hash(key) → bucket / shard / node</code>.</li>
+                <li><strong>Deep dives -</strong> collision handling, partition-key choice, hot keys, modulo rehashing, dedup, checksums, security.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>One hot key overloads one node -</strong> replicate or split/salt the key, add an L1 cache, adaptive routing.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Frequent: design a URL shortener - how do you generate the short key?</summary><p>Unique ID + Base62, or hash + collision resolution. Cache hot redirects, stateless servers behind a load balancer, shard by short key; 301 vs 302 depends on server load vs analytics needs.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#visual">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#design-checklist">Design checklist</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>Fast hash for routing, slow hash for passwords.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

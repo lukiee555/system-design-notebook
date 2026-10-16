@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Question notes: {{TITLE}}.">
+  <title>{{TITLE}} | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="{{SLUG}}">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Questions</a><span aria-hidden="true">/</span><span aria-current="page">{{TITLE}}</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Question</p>
+          <h1>{{TITLE}}</h1>
+          <p>{{ONE_LINE_SUMMARY}}</p>
+          <div class="hero-meta"><a class="pill" href="../topics/{{RELATED_TOPIC_SLUG}}.html">{{RELATED_TOPIC}}</a></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li><strong>Requirements:</strong> </li>
+                <li><strong>Key numbers:</strong> </li>
+                <li><strong>Core components:</strong> </li>
+                <li><strong>Main flow:</strong> </li>
+                <li><strong>Decisive trade-offs:</strong> </li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="requirements">
+              <div class="section-heading"><div><h2>Requirements</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Functional —</strong> </li>
+                <li><strong>Non-functional —</strong> </li>
+                <li><strong>Out of scope —</strong> </li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="estimation">
+              <div class="section-heading"><div><h2>Estimation</h2></div></div>
+              <pre></pre>
+            </section>
+
+            <section class="section-card" id="high-level-design">
+              <div class="section-heading"><div><h2>High-level design</h2></div></div>
+              <!-- Diagram from assets/media/questions/{{SLUG}}/, then API and data model. -->
+            </section>
+
+            <section class="section-card" id="deep-dives">
+              <div class="section-heading"><div><h2>Deep dives</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Component —</strong> </li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody><tr><td></td><td></td><td></td></tr></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes and scaling</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Failure —</strong> mitigation.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview follow-ups</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Question?</summary><p>Answer.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#estimation">Estimation</a></li><li><a href="#high-level-design">High-level design</a></li><li><a href="#deep-dives">Deep dives</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview follow-ups</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p></p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

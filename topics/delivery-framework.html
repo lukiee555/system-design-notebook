@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: READ → HD system design delivery framework and SAFE SCALE.">
+  <title>READ → HD Framework | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="delivery-framework">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">READ → HD Framework</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · System Design Delivery Framework</p>
+          <h1>READ → HD Framework</h1>
+          <p>A fixed interview sequence that manages time and delivers a working end-to-end system before any optimization.</p>
+          <div class="hero-meta"><span class="pill">Requirements</span><span class="pill">Entities</span><span class="pill">API</span><span class="pill">Data flow</span><span class="pill">HLD</span><span class="pill">Deep dives</span><span class="pill">SAFE SCALE</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="visual">
+              <div class="section-heading"><div><h2>Cheat sheets</h2><p>READ → HD and SAFE SCALE applied to three systems (tap for full size).</p></div></div>
+              <div class="card-grid">
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/delivery-framework/rest-food-delivery-safe-scale-cheat-sheet.webp" aria-label="Open the REST food delivery cheat sheet">
+                    <img src="../assets/media/topics/delivery-framework/rest-food-delivery-safe-scale-cheat-sheet.webp" width="1600" height="2827" loading="lazy" decoding="async" alt="REST food-delivery cheat sheet with READ to HD steps and SAFE SCALE memory aids.">
+                  </a>
+                  <figcaption>REST · food delivery</figcaption>
+                </figure>
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/delivery-framework/graphql-marketplace-safe-scale-cheat-sheet.webp" aria-label="Open the GraphQL marketplace cheat sheet">
+                    <img src="../assets/media/topics/delivery-framework/graphql-marketplace-safe-scale-cheat-sheet.webp" width="1600" height="2827" loading="lazy" decoding="async" alt="GraphQL marketplace cheat sheet with READ to HD steps and SAFE SCALE memory aids.">
+                  </a>
+                  <figcaption>GraphQL · marketplace</figcaption>
+                </figure>
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/delivery-framework/grpc-ride-dispatch-safe-scale-cheat-sheet.webp" aria-label="Open the gRPC ride dispatch cheat sheet">
+                    <img src="../assets/media/topics/delivery-framework/grpc-ride-dispatch-safe-scale-cheat-sheet.webp" width="1600" height="2827" loading="lazy" decoding="async" alt="gRPC ride-dispatch cheat sheet with READ to HD steps and SAFE SCALE memory aids.">
+                  </a>
+                  <figcaption>gRPC · ride dispatch</figcaption>
+                </figure>
+              </div>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li><strong>READ → HD:</strong> Requirements (~5m) → Entities (~2m) → API (~5m) → Data flow* (~5m) → High-level design (~10-15m) → Deep dives (~10m). <em>*optional</em></li>
+                <li>Agree the top <strong>3 functional</strong> and only the <strong>3-5 non-functional</strong> requirements that matter; quantify them.</li>
+                <li><strong>SAFE SCALE</strong> for NFRs: Scope, Availability, Fault tolerance, Endurance/durability, Scalability, Consistency/CAP, Access/compliance, Latency, Environment.</li>
+                <li>Estimate only when the number changes a design decision.</li>
+                <li>HLD: simplest complete system first, one requirement/endpoint at a time; narrate every state change.</li>
+                <li>Deep dives: harden for bottlenecks, contention, consistency, recovery, scale, latency, security, cost.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="steps">
+              <div class="section-heading"><div><h2>Step-by-step questions</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Requirements -</strong> primary actors, top three user journeys, scale, consistency, latency targets, durability, security, acceptable failure behavior.</li>
+                <li><strong>Estimation -</strong> which number could invalidate the simple design?</li>
+                <li><strong>Entities and API -</strong> the resources exchanged and persisted; derive APIs directly from the functional requirements.</li>
+                <li><strong>High-level design -</strong> can every core request be traced through <code>Client → Gateway → Service → Cache/DB/Queue → Response</code>? Add only what each flow needs.</li>
+                <li><strong>Deep dives -</strong> where will it break first? Pick 2-3 system-specific risks: inventory contention, GraphQL fan-out, courier matching, cache failure, DB hotspots, retry storms.</li>
+              </ul>
+              <pre>Average QPS = daily operations ÷ 86,400
+Peak QPS    = average QPS × peak factor
+Storage     = writes/day × record size × retention × replication
+Bandwidth   = requests/s × average payload size</pre>
+              <p>Protocol choice: see <a href="api-protocols.html">REST vs GraphQL vs gRPC</a>.</p>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Estimate only when needed</td><td>Saves time; calculations stay decision-oriented</td><td>Capacity constraints missed if skipped blindly</td></tr>
+                    <tr><td>Simple HLD before optimization</td><td>Complete answer; exposes real bottlenecks</td><td>First design may be intentionally inefficient</td></tr>
+                    <tr><td>Strong consistency for inventory/payment</td><td>No overselling, double booking, or conflicting money state</td><td>Higher latency, lower availability during failures</td></tr>
+                    <tr><td>Queues for multi-step workflows</td><td>Decoupling, spike absorption, retries</td><td>Eventual consistency, duplicates, operational complexity</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Scope keeps expanding -</strong> freeze the top three functional requirements; move extras below the line.</li>
+                <li><strong>Too many generic NFRs -</strong> scan SAFE SCALE, pick the relevant 3-5, attach measurable targets.</li>
+                <li><strong>Time lost to arithmetic -</strong> state assumptions; estimate only where it changes partitioning, storage, or capacity.</li>
+                <li><strong>Incomplete design from early complexity -</strong> finish one request path before queues, caches, replicas, sharding.</li>
+                <li><strong>Duplicate order/payment on retry -</strong> idempotency key, unique constraint, atomic state transition, transactional outbox.</li>
+                <li><strong>Partial failure in a workflow -</strong> persisted state machine or saga, retryable steps, compensating actions.</li>
+                <li><strong>Cache outage or stampede -</strong> bounded L1 cache, DB fallback, request coalescing, TTL jitter, rate limiting, load shedding.</li>
+                <li><strong>Two couriers get the same delivery -</strong> atomic conditional assignment, short lease, fencing token, idempotent acceptance.</li>
+                <li><strong>Stale driver location -</strong> version every update, reject older writes, expire inactive locations, split current location from history.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Moody's (2026): inventory and pricing service - read-heavy, consistency vs availability, authorization, simultaneous purchases.</summary><p>GraphQL/REST for reads, authenticated mutations for price/stock, SQL transactions or conditional writes for inventory, Redis for hot reads, outbox/event stream to search and analytics. Consistency first for stock mutations.</p></details>
+                <details class="recall-card"><summary>Moody's (2026): the whole Redis cluster fails, or hundreds buy the same product at once?</summary><p>Fall back via a small bounded L1 cache to the DB with rate limiting and circuit breaking. Prevent overselling with an atomic conditional decrement or transaction, reservation expiry, and idempotent order creation.</p></details>
+                <details class="recall-card"><summary>Microsoft SDE2 (2026): Teams messaging - WebSockets vs long polling, 10K+ groups, partitioned history, ordering.</summary><p>WebSockets via connection gateways, partition by <code>conversation_id</code>, append-oriented store, per-conversation sequence numbers, reconnect from last acknowledged sequence.</p></details>
+                <details class="recall-card"><summary>Meta / Amazon: food delivery like Uber Eats at 100M DAU.</summary><p>REST for customer/restaurant APIs, event-driven order state machine, SQL for orders/payments, outbox + queue for notifications and dispatch, geo index for nearby couriers, WebSocket/SSE tracking.</p></details>
+                <details class="recall-card"><summary>Salesforce (2025): marketplace/property platform - no double booking, search &lt; 500 ms, global photos, bulk updates.</summary><p>Reserve with a short TTL, confirm after payment with an atomic condition, feed Elasticsearch via CDC/outbox, photos in object storage + CDN, bulk updates as idempotent async jobs.</p></details>
+                <details class="recall-card"><summary>Uber: driver location every 3 s for 100K trips + 30 days of history.</summary><p>Client-streaming gRPC or batched HTTP writes; append-heavy time-series/wide-column store partitioned by driver/trip + time bucket; TTL/tiering; separate geo index for latest locations only.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#visual">Cheat sheets</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#steps">Step-by-step questions</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>READ first, then design in HD. Make it work end-to-end, then make it scale.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

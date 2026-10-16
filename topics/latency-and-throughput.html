@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: latency and throughput.">
+  <title>Latency and Throughput | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="latency-and-throughput">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Latency and Throughput</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · System Design Fundamentals</p>
+          <h1>Latency and Throughput</h1>
+          <p>How long one operation takes versus how much work completes per second - and why improving one can hurt the other.</p>
+          <div class="hero-meta"><span class="pill">p95 / p99</span><span class="pill">RPS &amp; bandwidth</span><span class="pill">Batching</span><span class="pill">Backpressure</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="visual">
+              <div class="section-heading"><div><h2>Cheat sheet</h2></div></div>
+              <figure class="media-frame">
+                <a href="../assets/media/topics/latency-and-throughput/latency-and-throughput-cheat-sheet.webp" aria-label="Open the full-size cheat sheet">
+                  <img src="../assets/media/topics/latency-and-throughput/latency-and-throughput-cheat-sheet.webp" width="1536" height="1024" loading="eager" decoding="async" alt="Latency versus throughput cheat sheet: definitions, formulas, examples, metrics, and common performance trade-offs.">
+                </a>
+                <figcaption>Latency vs throughput: definitions, formulas, metrics, and trade-offs (tap for full size).</figcaption>
+              </figure>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li><strong>Latency</strong> = time for one operation; <strong>throughput</strong> = work completed per unit time (RPS, TPS, messages/s, bytes/s).</li>
+                <li>Optimize tail latency (p95, p99), not only averages.</li>
+                <li>High throughput does not mean low latency - batching raises throughput but adds per-item latency.</li>
+                <li><code>concurrency ≈ throughput × latency</code>.</li>
+                <li>Watch p50/p95/p99, error rate, saturation, and queue depth.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="design-checklist">
+              <div class="section-heading"><div><h2>Design checklist</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Requirements -</strong> target p99, peak RPS, payload size, burstiness, SLA.</li>
+                <li><strong>Estimation -</strong> peak RPS, bandwidth, and <code>concurrency ≈ throughput × latency</code>.</li>
+                <li><strong>High-level design -</strong> client → load balancer → stateless services → cache/database, with queues for slow work.</li>
+                <li><strong>Deep dives -</strong> tail latency, connection pools, backpressure, load shedding, timeouts, tracing, load tests.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Batch requests</td><td>Higher throughput, fewer network calls</td><td>Higher per-item latency</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Average looks healthy, some users are slow -</strong> monitor p95/p99, per-hop latency, queueing time, distributed traces.</li>
+                <li><strong>Retries amplify an outage -</strong> bounded retry budgets, exponential backoff with jitter, timeouts, load shedding.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>CRED: compute latency, throughput, and error rate; support p90 later.</summary><p>Latency = completion time − start time; throughput = completed events ÷ window duration; error rate = failures ÷ total. For p90, keep and sort bounded windows, or use a streaming histogram / quantile sketch at scale.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#visual">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#design-checklist">Design checklist</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>Averages hide pain. Report p99 and say what it costs to improve it.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

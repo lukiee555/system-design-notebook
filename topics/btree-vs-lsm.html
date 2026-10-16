@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: B+ tree vs LSM tree indexes.">
+  <title>B+ Tree vs LSM Tree | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="btree-vs-lsm">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">B+ Tree vs LSM Tree</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Database Indexing</p>
+          <h1>B+ Tree vs LSM Tree</h1>
+          <p>Update pages in place for predictable reads, or append and compact for sustained write throughput.</p>
+          <div class="hero-meta"><span class="pill">Page splits</span><span class="pill">MemTable &amp; SSTable</span><span class="pill">Compaction</span><span class="pill">Bloom filters</span><span class="pill">Amplification</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:760px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/btree-vs-lsm/btree-vs-lsm-indexes.webp" aria-label="Open the B+ tree vs LSM tree sheet">
+            <img src="../assets/media/topics/btree-vs-lsm/btree-vs-lsm-indexes.webp" width="1400" height="1712" loading="eager" decoding="async" alt="Comparison of B+ tree and LSM tree write and read paths, costs, amplification, and workload decision rules.">
+          </a>
+          <figcaption>B+ tree vs LSM tree (tap for full size)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li><strong>B+ tree:</strong> balanced, multi-way, page-sized nodes; routing keys inside, records/locators at linked leaves.</li>
+                <li>Great for <code>=</code>, ranges, prefix, <code>ORDER BY</code>, uniqueness; costs random writes and page splits.</li>
+                <li><strong>LSM:</strong> WAL → MemTable → immutable SSTables → compaction. Turns random writes sequential.</li>
+                <li>LSM reads check memory, use Bloom filters to skip files, reconcile newest version/tombstone.</li>
+                <li>LSM trades write/read/space amplification; compaction debt and tombstones are the main risks.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="btree">
+              <div class="section-heading"><div><h2>B+ tree</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Search -</strong> root separators → child → leaf → row (or covered columns). For ranges, seek the first leaf and walk linked leaves.</li>
+                <li><strong>Insert -</strong> traverse to leaf, insert sorted, split if full, push separator up, keep all leaves at one depth.</li>
+                <li><strong>Costs -</strong> random page writes, splits, fragmentation, secondary-index upkeep, hot right edge for increasing keys.</li>
+                <li><strong>B-tree vs B+ tree -</strong> classic B-tree may store records in internal nodes; B+ tree keeps them at linked leaves → efficient ranges.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="lsm">
+              <div class="section-heading"><div><h2>LSM tree</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Write -</strong> WAL for durability → sorted MemTable → freeze → flush as immutable SSTable → background compaction.</li>
+                <li><strong>Read -</strong> active MemTable → immutable MemTables → Bloom filters/metadata → candidate SSTables → newest visible value.</li>
+                <li><strong>Bloom filter -</strong> "definitely absent" or "possibly present"; never false negatives. Not an index - it can't return rows.</li>
+                <li><strong>Deletes -</strong> tombstones, kept until no older copy can reappear.</li>
+                <li><strong>Monitor -</strong> SSTable count, pending compaction, write stalls, disk headroom, tombstone density, Bloom false-positive rate.</li>
+              </ul>
+              <div class="table-scroll" style="margin-top:1rem">
+                <table class="data-table">
+                  <thead><tr><th>Compaction</th><th>Benefit</th><th>Cost</th></tr></thead>
+                  <tbody>
+                    <tr><td>Size-tiered</td><td>Very high write throughput</td><td>Read and space amplification</td></tr>
+                    <tr><td>Leveled</td><td>Better point reads, bounded overlap</td><td>Higher write amplification</td></tr>
+                    <tr><td>Time-window</td><td>Time-series expiry</td><td>Bad when updates hit old windows</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="choose">
+              <div class="section-heading"><div><h2>Which one?</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>LSM -</strong> metrics, logs, events, time-series, write-heavy key-value, append-heavy data.</li>
+                <li><strong>B-tree -</strong> balanced reads/writes, strict predictable point/range latency, limited ops budget, relational secondary indexes and ad-hoc queries.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>B+ tree</td><td>Equality, range, prefix, ordered scans; predictable height</td><td>Random page updates, splits, fragmentation</td></tr>
+                    <tr><td>LSM tree</td><td>High sustained writes, append-oriented I/O</td><td>Compaction, tombstones, read/write/space amplification</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>B-tree degrades under churn -</strong> splits, dead entries, poor fill → monitor bloat, vacuum/rebuild on evidence.</li>
+                <li><strong>LSM read latency creeps up -</strong> too many SSTables / compaction debt → tune compaction, add I/O, alert on stalls.</li>
+                <li><strong>LSM disk fills -</strong> compaction needs old + new files; tombstones pile up → keep headroom, right TTL policy.</li>
+                <li><strong>Deleted data reappears -</strong> tombstones dropped too early → respect repair/retention rules.</li>
+                <li><strong>Bloom filter extra reads -</strong> high false-positive rate → tune bits per key.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>CRED SDE-2 (Dec 2025): explain LSM trees and SSTables (BigTable).</summary><p>Write to WAL + sorted MemTable; when full, freeze and flush as immutable sorted SSTable. Reads check memory, use Bloom filters to skip files, reconcile newest version or tombstone. Compaction merges files and drops obsolete versions. High write throughput; costs amplification, compaction debt, tombstones.</p></details>
+                <details class="recall-card"><summary>B-tree or LSM for a metrics platform?</summary><p>LSM for sustained high-volume writes and time-ordered scans, accepting compaction I/O and amplification. B-tree if stable low read latency dominates and writes are moderate.</p></details>
+                <details class="recall-card"><summary>Does a Bloom filter replace an index?</summary><p>No. It only says "definitely absent" or "possibly present"; LSM engines use it to skip SSTables.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#btree">B+ tree</a></li><li><a href="#lsm">LSM tree</a></li><li><a href="#choose">Which one?</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>B-tree pays on write, LSM pays later in compaction. Pick who pays.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

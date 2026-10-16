@@ -1,0 +1,167 @@
+.visualizer {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(rgba(49, 87, 213, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(49, 87, 213, 0.04) 1px, transparent 1px),
+    var(--surface);
+  background-size: 24px 24px;
+}
+.visualizer-canvas {
+  padding: 1rem;
+}
+.visualizer svg {
+  display: block;
+  width: 100%;
+  min-height: 280px;
+}
+.visualizer .node rect,
+.visualizer .node path,
+.visualizer .node circle {
+  fill: var(--surface-strong);
+  stroke: var(--ink);
+  stroke-width: 2.2;
+  vector-effect: non-scaling-stroke;
+}
+.visualizer .node text {
+  fill: var(--ink);
+  font-family: var(--font-hand);
+  font-size: 19px;
+}
+.visualizer .flow-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 8 7;
+  vector-effect: non-scaling-stroke;
+}
+.visualizer .flow-packet {
+  fill: var(--warning);
+  stroke: var(--ink);
+  stroke-width: 2;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.18));
+}
+.visualizer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.8rem 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--surface-strong);
+}
+.visualizer-controls label {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.visualizer-controls select {
+  margin-left: 0.35rem;
+  padding: 0.36rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.media-frame {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.media-frame figcaption {
+  padding: 0.7rem 0.9rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.media-frame a {
+  cursor: zoom-in;
+}
+body.viewer-open {
+  overflow: hidden;
+}
+.viewer {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #0b0d13;
+  color: #e9edf5;
+}
+.viewer::backdrop {
+  background: rgba(0, 0, 0, 0.85);
+}
+.viewer[open] {
+  display: flex;
+  flex-direction: column;
+}
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(11, 13, 19, 0.92);
+}
+.viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.viewer-count,
+.viewer-zoom-level {
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.viewer-zoom-level {
+  min-width: 3.2rem;
+  text-align: center;
+}
+.viewer-scroll {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  outline: none;
+}
+.viewer-pages {
+  --zoom: 1;
+  display: grid;
+  gap: 1.2rem;
+  width: calc(min(100%, 1000px) * var(--zoom));
+  margin: 0 auto;
+  padding: 1rem 0.5rem 3rem;
+}
+.viewer-page {
+  margin: 0;
+  scroll-margin-top: 0.5rem;
+}
+.viewer-page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: #fff;
+}
+.viewer-page figcaption {
+  padding: 0.45rem 0.2rem 0;
+  color: #9aa5b8;
+  font-size: 0.82rem;
+  text-align: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .visualizer * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

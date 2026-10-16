@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: back-of-the-envelope estimation.">
+  <title>Back-of-the-Envelope Estimation | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="back-of-the-envelope-estimation">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Estimation</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · System Design Fundamentals</p>
+          <h1>Back-of-the-Envelope Estimation</h1>
+          <p>Turn vague scale into rough numbers that guide design - a transparent chain of assumptions, units, rounded math, and a sanity check.</p>
+          <div class="hero-meta"><span class="pill">QPS &amp; peak QPS</span><span class="pill">Storage &amp; retention</span><span class="pill">Powers of two</span><span class="pill">Latency &amp; nines</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="cheat-sheet">
+              <div class="section-heading"><div><h2>Estimation cheat sheet</h2><p>One printable reference: workflow, units, latency, availability, and a worked example.</p></div></div>
+              <figure class="media-frame">
+                <a href="../assets/media/topics/back-of-the-envelope-estimation/back-of-envelope-estimation-cheat-sheet.svg" aria-label="Open the full-size estimation cheat sheet">
+                  <img src="../assets/media/topics/back-of-the-envelope-estimation/back-of-envelope-estimation-cheat-sheet.svg" width="1600" height="1000" loading="eager" decoding="async" alt="Back-of-the-envelope estimation cheat sheet: the estimation workflow, powers of two from KB to PB, the latency hierarchy from memory to cross-region network, availability downtime per number of nines, and an illustrative tweet QPS and media storage calculation.">
+                </a>
+                <figcaption>Compact estimation reference (tap for full size). The worked values are illustrative assumptions, not real product metrics.</figcaption>
+              </figure>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <p><strong>Core idea:</strong> estimation turns vague scale into approximate numbers that guide architecture. Aim for a defendable order of magnitude, not exact arithmetic - keep assumptions and units visible and finish with a sanity check.</p>
+
+              <h3>Core formulas</h3>
+              <pre>DAU            = MAU × daily-use %
+Operations/day = DAU × operations/user/day
+Average QPS    = operations/day ÷ 86,400
+Peak QPS       = average QPS × peak multiplier
+Daily storage  = objects/day × avg object size
+Retention      = daily storage × retention days</pre>
+
+              <h3>Reference numbers</h3>
+              <pre>2^10 ≈ KB   2^20 ≈ MB   2^30 ≈ GB   2^40 ≈ TB   2^50 ≈ PB   (1 byte = 8 bits)
+Latency (fast → slow): CPU/memory → same-DC network → disk/network → cross-region</pre>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Availability</th><th>Approx. downtime / year</th></tr></thead>
+                  <tbody>
+                    <tr><td>99.9%</td><td>8.77 hours</td></tr>
+                    <tr><td>99.99%</td><td>52.6 minutes</td></tr>
+                    <tr><td>99.999%</td><td>5.26 minutes</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>Common mistakes</h3>
+              <ul class="revision-list">
+                <li>Bare numbers with no units, or hidden assumptions.</li>
+                <li>Confusing a daily total with a per-second rate.</li>
+                <li>Reporting only average QPS and ignoring peaks.</li>
+                <li>Mixing KB/MB/GB/TB during conversions.</li>
+                <li>Treating a rough input as an exact answer.</li>
+                <li>Ending with a number without saying what it changes in the design.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="active-recall">
+              <div class="section-heading"><div><h2>Active recall</h2><p>Answer before revealing.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Why divide by 86,400 for average QPS?</summary><p>There are 86,400 seconds in a day, so operations/day ÷ 86,400 gives the average per-second rate.</p></details>
+                <details class="recall-card"><summary>What is missing if an answer gives only average QPS?</summary><p>The peak. Real traffic spikes above average, so apply an explicit peak multiplier.</p></details>
+                <details class="recall-card"><summary>Why remember latency numbers as a hierarchy?</summary><p>Exact figures age with hardware, but the relative order (memory &lt; same-DC &lt; disk/network &lt; cross-region) stays useful.</p></details>
+              </div>
+            </section>
+
+            <section class="section-card" id="method">
+              <div class="section-heading"><div><h2>Method</h2><p>A repeatable seven-step routine.</p></div></div>
+              <ol>
+                <li>Clarify what you are estimating: reads, writes, bandwidth, storage, cache, or servers.</li>
+                <li>Define the population and behavior assumptions.</li>
+                <li>Convert behavior into operations per day.</li>
+                <li>Convert to average QPS, then peak QPS with an explicit multiplier.</li>
+                <li>Compute bytes per object and retention storage where relevant.</li>
+                <li>Round only enough to simplify without changing the order of magnitude.</li>
+                <li>Sanity-check units and magnitude, then state the design consequence.</li>
+              </ol>
+            </section>
+
+            <section class="section-card" id="worked-exercise">
+              <div class="section-heading"><div><h2>Worked exercise</h2><p>An <strong>illustrative</strong> calculation - the values are exercise assumptions, not real Twitter metrics.</p></div></div>
+              <pre>Assumptions
+  MAU             = 300 million
+  Daily-use rate  = 50%
+  Tweets/user/day = 2
+  Media share     = 10%
+  Avg media size  = 1 MB
+  Retention       = 5 years
+  Peak multiplier = 2×
+
+Calculation
+  DAU            = 300M × 50%         = 150M
+  Tweets/day     = 150M × 2           = 300M
+  Average QPS    = 300M ÷ 86,400      ≈ 3,500/s
+  Peak QPS       = 3,500 × 2          ≈ 7,000/s
+  Media/day      = 300M × 10% × 1 MB  ≈ 30 TB/day
+  5-year storage = 30 TB × 365 × 5    ≈ 55 PB</pre>
+            </section>
+
+            <section class="section-card" id="decision-rules">
+              <div class="section-heading"><div><h2>Decision rules</h2><p>Rules of thumb worth stating in an interview.</p></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Decision</th><th>Rule of thumb</th></tr></thead>
+                  <tbody>
+                    <tr><td>Precision</td><td>Prefer a defendable order of magnitude over slow exact arithmetic.</td></tr>
+                    <tr><td>Peak factor</td><td>State it explicitly; do not hide it in the result.</td></tr>
+                    <tr><td>Latency</td><td>Use the relative hierarchy; current hardware figures vary.</td></tr>
+                    <tr><td>Availability</td><td>More nines cut downtime but raise redundancy and operational cost.</td></tr>
+                    <tr><td>Storage</td><td>Include retention and replication only when asked; say whether they are included.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Estimate read and write QPS for a given MAU and usage rate.</summary><p>Convert MAU → DAU → operations/day, divide by 86,400 for average QPS, then apply a peak multiplier - separately for reads and writes.</p></details>
+                <details class="recall-card"><summary>Estimate five-year storage for records with metadata plus optional media.</summary><p>bytes/record × records/day × 365 × 5, adding media share × media size; state whether replication is included.</p></details>
+                <details class="recall-card"><summary>How does a QPS or storage estimate change the design?</summary><p>It drives capacity, caching, sharding, and storage-tier choices - high peak QPS argues for caching and horizontal scale; large storage argues for object storage and retention limits.</p></details>
+              </div>
+              <div class="callout" style="margin-top:1rem"><strong>Tip:</strong> state assumptions and units first, round as you go, and finish by connecting the number to a capacity, caching, storage, or availability decision.</div>
+            </section>
+
+            <section class="section-card" id="final-checklist">
+              <div class="section-heading"><div><h2>Final checklist</h2><p>A good estimate has all of these.</p></div></div>
+              <ul class="checklist">
+                <li>Assumptions written first.</li>
+                <li>Units attached to every number.</li>
+                <li>Average and peak clearly separated.</li>
+                <li>Data-size conversions checked.</li>
+                <li>Retention included where relevant.</li>
+                <li>Result sanity-checked for magnitude.</li>
+                <li>Design implication stated.</li>
+              </ul>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#active-recall">Active recall</a></li><li><a href="#method">Method</a></li><li><a href="#worked-exercise">Worked exercise</a></li><li><a href="#decision-rules">Decision rules</a></li><li><a href="#interview-practice">Interview practice</a></li><li><a href="#final-checklist">Final checklist</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>Assumptions + units + rounding + a sanity check. The process and the design implication matter more than false precision.</p></article>
+          </aside>
+        </div>
+
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: caching strategy - what to cache, where, keys, read/write patterns, TTL and eviction.">
+  <title>Caching Strategy | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="caching-strategy">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Caching Strategy</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Caching in Depth</p>
+          <h1>Caching Strategy</h1>
+          <p>What to cache, where it lives, how keys are built, and which read/write pattern keeps it fresh enough.</p>
+          <div class="hero-meta"><span class="pill">Cacheability</span><span class="pill">L1 / L2 / CDN</span><span class="pill">Key design</span><span class="pill">Cache-aside</span><span class="pill">TTL vs eviction</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/caching-strategy/caching-in-depth-quick-revision.webp" aria-label="Open the caching in depth quick revision sheet">
+            <img src="../assets/media/topics/caching-strategy/caching-in-depth-quick-revision.webp" width="1600" height="1067" loading="eager" decoding="async" alt="Caching in depth quick revision: cache decisions, placement, patterns, consistency, distribution, failures, estimation, and interview rules.">
+          </a>
+          <figcaption>Caching in Depth Quick Revision Cheat Sheet (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Cache only a <strong>measured bottleneck</strong>: frequently read, expensive, small hot set, tolerates brief staleness.</li>
+                <li>Default: shared L2 + <strong>cache-aside</strong> reads + DB write first + <strong>invalidate after commit</strong> + TTL safety net.</li>
+                <li>Pick the layer: browser/CDN near users, L1 for tiny hot data, shared L2 across instances; DB stays authoritative.</li>
+                <li>Freshness is per data type: metadata minutes, price seconds, checkout inventory from source.</li>
+                <li><strong>TTL controls age; LRU/LFU controls capacity.</strong> Add jitter.</li>
+              </ul>
+              <p><strong>Naming:</strong> cache-aside = app loads misses; read-through = cache loads misses. Alex Xu calls the app-managed flow "read-through" - define your meaning.</p>
+            </section>
+
+            <section class="section-card" id="concepts">
+              <div class="section-heading"><div><h2>What and where</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Cache -</strong> fast, temporary, reconstructible copy of slower data. Hit ratio = hits ÷ (hits + misses); byte hit ratio for mixed sizes; an "effective hit" actually saves origin work.</li>
+                <li><strong>Cache when -</strong> keys reuse, origin is expensive, bounded staleness OK, hot set fits, access is skewed, tenant scope can be keyed, origin survives cache loss.</li>
+                <li><strong>Don't cache by reflex -</strong> first rule out indexing, query tuning, replicas, precomputation.</li>
+              </ul>
+              <div class="table-scroll" style="margin-top:1rem">
+                <table class="data-table">
+                  <thead><tr><th>Layer</th><th>Best for</th><th>Caveat</th></tr></thead>
+                  <tbody>
+                    <tr><td>Browser / mobile</td><td>Static assets, public responses</td><td>Weak invalidation control</td></tr>
+                    <tr><td>CDN / edge</td><td>Images, video, JS/CSS, public HTML/API</td><td>Key correctness, privacy, invalidation cost</td></tr>
+                    <tr><td>Reverse proxy / gateway</td><td>Repeated HTTP responses</td><td>Auth, cookies, query params in key</td></tr>
+                    <tr><td>L1 in-process</td><td>Tiny reference data, flags, very hot keys</td><td>Per-instance divergence, memory × replicas</td></tr>
+                    <tr><td>Shared L2</td><td>Entities, query results, counters, sessions</td><td>Network hop, hot shards</td></tr>
+                    <tr><td>L1 + L2</td><td>Very hot shared data</td><td>Two invalidation domains</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="keys">
+              <div class="section-heading"><div><h2>Values and keys</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Good values -</strong> hot entities, expensive query results, IDs/projections, precomputed feeds/permissions, short negative results.</li>
+                <li><strong>Avoid -</strong> unbounded lists, giant blobs, unsafe-to-be-stale data, user data without user/tenant in the key, cheap rarely-reused values.</li>
+                <li><strong>Key rules -</strong> include tenant, auth scope, locale, region, currency, experiment, projection; add schema version; namespace per service; canonicalize params.</li>
+              </ul>
+              <pre>{namespace}:{tenant}:{entity}:{id}:{view}:{locale}:{schemaVersion}
+catalog:in:product:123:price:INR:v2
+
+envelope = { payload, sourceVersion, cachedAt, expiresAt, schemaVersion }</pre>
+            </section>
+
+            <section class="section-card" id="patterns">
+              <div class="section-heading"><div><h2>Read and write patterns</h2></div></div>
+              <figure class="media-frame" style="margin-bottom:1rem">
+                <a href="../assets/media/topics/caching-strategy/cache-read-write-patterns.webp" aria-label="Open cache read and write patterns">
+                  <img src="../assets/media/topics/caching-strategy/cache-read-write-patterns.webp" width="1600" height="1067" loading="lazy" decoding="async" alt="Cache read and write patterns compared with a product-catalog example and selection rules.">
+                </a>
+                <figcaption>Cache read and write patterns</figcaption>
+              </figure>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Read pattern</th><th>Use when</th><th>Risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Cache-aside</td><td>General read-heavy; app wants control</td><td>Miss latency, duplicate fills</td></tr>
+                    <tr><td>Read-through</td><td>A library owns loading</td><td>Extra dependency</td></tr>
+                    <tr><td>Stale-while-revalidate</td><td>Latency matters, brief staleness OK</td><td>Stale reads; refresh must be reliable</td></tr>
+                    <tr><td>Refresh-ahead</td><td>Predictable hot set</td><td>Wasted refreshes</td></tr>
+                    <tr><td>Warming</td><td>Deploys, launches, failover</td><td>Can overload origin</td></tr>
+                    <tr><td>Single-flight</td><td>Hot misses, stampedes</td><td>Lock timeouts</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <ul class="lead-list" style="margin-top:1rem">
+                <li><strong>DB write → invalidate (default) -</strong> transaction updates row + outbox, commit, publish versioned invalidation, delete key; next read refills. Delete beats update: no wrong projections, fewer ordering bugs.</li>
+                <li><strong>DB write → update cache -</strong> only with exact canonical value + source version + compare-and-set.</li>
+                <li><strong>Write-through -</strong> narrower stale window, not automatically strongly consistent (partial failures).</li>
+                <li><strong>Write-around -</strong> skip cache for write-heavy, rarely-read data; still invalidate old entries.</li>
+                <li><strong>Write-behind -</strong> lowest write latency, but durability/ordering/replay risk; never only in a volatile cache.</li>
+                <li><strong>CDC / outbox -</strong> invalidate only after commit; idempotent, retryable consumers safe under duplicates and reordering.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="ttl">
+              <div class="section-heading"><div><h2>TTL, eviction, admission</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>TTL types -</strong> hard (never served after), soft (serve stale while refreshing), absolute, sliding (sessions). Jitter: <code>ttl × random(0.8, 1.2)</code>.</li>
+                <li><strong>Set TTL from -</strong> max acceptable staleness + invalidation reliability. Too short = origin load; too long = stale exposure.</li>
+                <li><strong>Eviction -</strong> LRU (good default, scan pollution), LFU (stable skew), FIFO, random, no-eviction (only for non-reconstructible state). Redis uses approximate LRU/LFU.</li>
+                <li><strong>Admission -</strong> decides what enters: skip one-hit scans, giant objects, cheap values (TinyLFU or size/frequency thresholds).</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Cache-aside</td><td>Simple; caches only demanded data</td><td>Miss latency; app owns stampede control</td></tr>
+                    <tr><td>Read-through</td><td>Centralized loader</td><td>Less app control</td></tr>
+                    <tr><td>Delete after write</td><td>Next read is authoritative</td><td>Next read misses</td></tr>
+                    <tr><td>Update after write</td><td>Warm cache</td><td>Wrong projection, out-of-order risk</td></tr>
+                    <tr><td>TTL-only</td><td>Simple, survives missing events</td><td>Stale until expiry</td></tr>
+                    <tr><td>Invalidation + TTL</td><td>Fast convergence + safety net</td><td>Event pipeline complexity</td></tr>
+                    <tr><td>Stale-while-revalidate</td><td>Low tail latency</td><td>Serves stale data</td></tr>
+                    <tr><td>Write-through</td><td>Warm cache, narrower stale window</td><td>Write latency, dual-write failures</td></tr>
+                    <tr><td>Write-behind</td><td>Lowest write latency, batching</td><td>Data-loss and ordering risk</td></tr>
+                    <tr><td>L1 / L2 / L1+L2</td><td>Speed / shared view / both</td><td>Divergence / hop / two domains</td></tr>
+                    <tr><td>LRU vs LFU</td><td>Recency vs popularity</td><td>Scan pollution vs metadata/decay</td></tr>
+                    <tr><td>Whole object vs IDs</td><td>One lookup vs compact reuse</td><td>Big invalidations vs more hydration</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>When should you introduce a cache in an HLD interview?</summary><p>After identifying repeated expensive reads, origin saturation, or a latency target the origin can't meet. Quantify QPS and expected offload first.</p></details>
+                <details class="recall-card"><summary>What's the safest default caching strategy?</summary><p>Cache-aside reads, DB-first durable writes, invalidate after commit, bounded TTL, single-flight for hot misses.</p></details>
+                <details class="recall-card"><summary>Why delete-on-write over update-on-write?</summary><p>Avoids rebuilding a stale/incomplete projection and reduces out-of-order risk; cost is one miss.</p></details>
+                <details class="recall-card"><summary>How do you choose a TTL?</summary><p>From max staleness, mutation rate, invalidation reliability, origin capacity, refresh cost - per data class, with jitter.</p></details>
+                <details class="recall-card"><summary>When should you not cache?</summary><p>Origin already meets goals, low reuse, exact freshness needed, working set won't fit, or complexity exceeds the gain.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#concepts">What and where</a></li><li><a href="#keys">Values and keys</a></li><li><a href="#patterns">Read/write patterns</a></li><li><a href="#ttl">TTL and eviction</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>A cache is a derived copy. TTL bounds staleness - it doesn't make it correct.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

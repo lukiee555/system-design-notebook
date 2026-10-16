@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="All system design topics with a fast quick-revision pass.">
+  <title>Topics | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="topics">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><span aria-current="page">Topics</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Section 1</p>
+          <h1>Topics</h1>
+          <p>Reusable concepts behind every design. Each card is the fast revision pass; open the topic for full notes.</p>
+
+          <div class="hero-actions"><a class="button primary" href="revision.html">&#9638; Image Revision - all topics</a></div>
+          <nav class="chip-nav" aria-label="Jump to category">
+            <a href="#fundamentals" style="--group:#7c6cf6">System Design Fundamentals <span class="count">9</span></a>
+            <a href="#delivery-framework" style="--group:#14b8a6">Delivery Framework <span class="count">2</span></a>
+            <a href="#data-modeling" style="--group:#f472b6">Data Modeling <span class="count">3</span></a>
+            <a href="#db-indexing" style="--group:#f59e0b">Database Indexing <span class="count">5</span></a>
+            <a href="#caching-in-depth" style="--group:#38bdf8">Caching in Depth <span class="count">5</span></a>
+          </nav>
+        </section>
+
+        <section class="topic-group" id="fundamentals" style="--group:#7c6cf6">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>System Design Fundamentals</h2><span class="count">9 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="scaling-fundamentals.html">
+              <h3>Scale From Zero to Millions of Users</h3>
+              <ul>
+                <li>Find the next bottleneck, add one component, state its trade-off.</li>
+                <li>One server → tiers → stateless web + LB → replicas → cache + CDN.</li>
+                <li>Replication copies data; sharding splits it.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="back-of-the-envelope-estimation.html">
+              <h3>Back-of-the-Envelope Estimation</h3>
+              <ul>
+                <li>Assumptions first, units always, round sensibly.</li>
+                <li>Avg QPS = ops/day ÷ 86,400; then × peak factor.</li>
+                <li>End with the design implication, not a number.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="latency-and-throughput.html">
+              <h3>Latency and Throughput</h3>
+              <ul>
+                <li>Latency = time per op; throughput = work per second.</li>
+                <li>Optimize p95/p99, not averages.</li>
+                <li><code>concurrency ≈ throughput × latency</code></li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="caching.html">
+              <h3>Caching</h3>
+              <ul>
+                <li>Cache-aside: app loads misses; read-through: cache does.</li>
+                <li>Plan populate, expire, invalidate, evict, fail.</li>
+                <li>Stampede → single-flight + TTL jitter.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="forward-and-reverse-proxy.html">
+              <h3>Forward and Reverse Proxy</h3>
+              <ul>
+                <li>Forward represents clients (egress).</li>
+                <li>Reverse represents servers (ingress, TLS, routing).</li>
+                <li>Edge proxy overwrites <code>X-Forwarded-For</code>.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="load-balancer.html">
+              <h3>Load Balancer</h3>
+              <ul>
+                <li>L4 fast and blind; L7 content-aware, more CPU.</li>
+                <li>RR, weighted, least-conn, IP hash, ring hash.</li>
+                <li>Health checks, draining, redundant LBs.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="hashing.html">
+              <h3>Hashing</h3>
+              <ul>
+                <li>Deterministic, fast, uniform, low-collision.</li>
+                <li>Passwords: Argon2id/bcrypt, never raw SHA.</li>
+                <li><code>hash % N</code> remaps most keys when N changes.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="consistent-hashing.html">
+              <h3>Consistent Hashing</h3>
+              <ul>
+                <li>Key → first node clockwise on the ring.</li>
+                <li>Node changes move only nearby keys.</li>
+                <li>Virtual nodes spread load; replicas give availability.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="leader-election.html">
+              <h3>Leader Election</h3>
+              <ul>
+                <li>Missed heartbeats → new term → majority vote.</li>
+                <li>No quorum, no leader.</li>
+                <li>Fencing tokens block stale leaders.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="delivery-framework" style="--group:#14b8a6">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>System Design Delivery Framework</h2><span class="count">2 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="delivery-framework.html">
+              <h3>READ → HD Framework</h3>
+              <ul>
+                <li>Requirements → Entities → API → Data flow → HLD → Deep dives.</li>
+                <li>Top 3 functional + 3-5 NFRs via SAFE SCALE.</li>
+                <li>Working end-to-end first, then harden.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="api-protocols.html">
+              <h3>REST vs GraphQL vs gRPC</h3>
+              <ul>
+                <li>REST: public CRUD, HTTP caching.</li>
+                <li>GraphQL: varied client shapes; watch N+1.</li>
+                <li>gRPC: fast typed internal calls; set deadlines.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="data-modeling" style="--group:#f472b6">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>Data Modeling</h2><span class="count">3 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="data-modeling.html">
+              <h3>Data Modeling Approach</h3>
+              <ul>
+                <li>Model from access patterns; PostgreSQL by default.</li>
+                <li>Drivers: volume, access patterns, consistency.</li>
+                <li>Minimal schema - good enough beats complete.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="schema-design.html">
+              <h3>Schema Design</h3>
+              <ul>
+                <li>Stable generated PKs; invariants as constraints.</li>
+                <li>Composite index: equality first, then range/sort.</li>
+                <li>Normalize; denormalize only proven hot reads.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="sharding.html">
+              <h3>Sharding and Shard Keys</h3>
+              <ul>
+                <li>Shard only after capacity math says so.</li>
+                <li>Key = dominant access pattern, high cardinality.</li>
+                <li>No time-only keys for hot writes.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="db-indexing" style="--group:#f59e0b">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>Database Indexing</h2><span class="count">5 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="db-indexing.html">
+              <h3>How Database Indexes Work</h3>
+              <ul>
+                <li>Index = access path; wins by cutting page reads.</li>
+                <li>Optimizer may still scan - check <code>EXPLAIN</code>.</li>
+                <li>Clustered = row order; secondary = extra fetch.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="btree-vs-lsm.html">
+              <h3>B+ Tree vs LSM Tree</h3>
+              <ul>
+                <li>B+ tree: ranges and order; random writes, splits.</li>
+                <li>LSM: WAL → MemTable → SSTable → compaction.</li>
+                <li>LSM pays in amplification and tombstones.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="geospatial-indexes.html">
+              <h3>Geospatial Indexes</h3>
+              <ul>
+                <li>Geohash: cell prefix + neighbours.</li>
+                <li>Quadtree: adapts to density; R-tree: any geometry.</li>
+                <li>Always finish with an exact distance check.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="inverted-index.html">
+              <h3>Inverted Index</h3>
+              <ul>
+                <li>Term → posting list of documents.</li>
+                <li>AND intersect, OR union, phrase = positions.</li>
+                <li>DB is truth; outbox/CDC feeds the index.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="index-optimization.html">
+              <h3>Index Optimization Patterns</h3>
+              <ul>
+                <li>Composite: equality → range/order → payload.</li>
+                <li>Covering, partial, expression - only when measured.</li>
+                <li>Cursor pagination; build big indexes online.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="caching-in-depth" style="--group:#38bdf8">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>Caching in Depth</h2><span class="count">5 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="caching-strategy.html">
+              <h3>Caching Strategy</h3>
+              <ul>
+                <li>Cache only a measured bottleneck.</li>
+                <li>Cache-aside + DB first + invalidate after commit + TTL.</li>
+                <li>TTL = age; LRU/LFU = capacity.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="cache-consistency.html">
+              <h3>Cache Consistency</h3>
+              <ul>
+                <li>Stale fills race with writes.</li>
+                <li>Source versions + compare-and-set.</li>
+                <li>Tombstones for deletes; version tokens for read-your-writes.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="distributed-cache.html">
+              <h3>Distributed Cache Architecture</h3>
+              <ul>
+                <li>Client vs proxy routing.</li>
+                <li>Consistent hashing or hash slots; replicate across failure domains.</li>
+                <li>Hot keys: L1, replicate, coalesce.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="cache-failures.html">
+              <h3>Cache Failures and Operations</h3>
+              <ul>
+                <li>Stampede, avalanche, penetration, outage.</li>
+                <li>Protect the origin: circuit breaker, bounded fallback.</li>
+                <li>Metrics per key class, shard, region.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="cache-design-walkthrough.html">
+              <h3>Cache Design Walkthrough</h3>
+              <ul>
+                <li>Per-field TTLs for a product page.</li>
+                <li>50K QPS → 12K origin QPS; ~80 GB memory.</li>
+                <li>Single-flight reads, outbox invalidation writes.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

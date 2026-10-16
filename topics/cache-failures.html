@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: cache failure modes, origin protection, and metrics.">
+  <title>Cache Failures and Operations | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="cache-failures">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Cache Failures</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Caching in Depth</p>
+          <h1>Cache Failures and Operations</h1>
+          <p>Design the failure path before promising latency: stampede, avalanche, penetration, outages, and the metrics that catch them.</p>
+          <div class="hero-meta"><span class="pill">Stampede</span><span class="pill">Avalanche</span><span class="pill">Penetration</span><span class="pill">Origin protection</span><span class="pill">Metrics</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/cache-failures/cache-failure-modes-and-mitigations.webp" aria-label="Open the cache failure modes sheet">
+            <img src="../assets/media/topics/cache-failures/cache-failure-modes-and-mitigations.webp" width="1600" height="1067" loading="eager" decoding="async" alt="Stampede, avalanche, penetration, outage, hot-key, and cold-start protections with runbook and alerts.">
+          </a>
+          <figcaption>Cache failure modes and mitigations (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li><strong>Stampede</strong> (one hot key expires) → single-flight, soft TTL, early refresh.</li>
+                <li><strong>Avalanche</strong> (many expire / empty restart) → TTL jitter, staggered warming, capped refill.</li>
+                <li><strong>Penetration</strong> (missing keys) → validation, negative cache, Bloom filter, rate limit.</li>
+                <li><strong>Outage</strong> → circuit breaker, bounded DB fallback, stale serving, load shedding.</li>
+                <li>Know if the cache is <strong>optional acceleration</strong> or a <strong>required stateful dependency</strong>.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="reliability">
+              <div class="section-heading"><div><h2>Reliability</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Optional vs required -</strong> fallback that's fine for product metadata may be unsafe for sessions, rate limits, leases, or write-behind state.</li>
+                <li><strong>Origin protection -</strong> circuit breakers, per-endpoint/tenant concurrency limits, rate limiting, load shedding, bounded fallback QPS, stale serving, reduced scope, retry budgets with backoff + jitter, gradual refill.</li>
+              </ul>
+              <pre>cache timeout
+  → open circuit briefly
+  → cap origin concurrency/QPS
+  → serve stale where permitted
+  → bypass only critical reads
+  → shed optional traffic
+  → refill gradually after recovery</pre>
+            </section>
+
+            <section class="section-card" id="metrics">
+              <div class="section-heading"><div><h2>Metrics</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Performance -</strong> hit and byte-hit ratio per key class, cache p50/p95/p99, miss-path and origin latency, origin QPS avoided, serialization time.</li>
+                <li><strong>Capacity -</strong> memory, fragmentation, item count and size, eviction/expiration rates, admission rejects, per-shard skew.</li>
+                <li><strong>Correctness -</strong> stale-read samples, version regressions, invalidation lag/failures/DLQ, negative-cache hits, read-after-write violations.</li>
+                <li><strong>Resilience -</strong> cache errors/timeouts, fallback QPS, single-flight waiters, lock timeouts, refill rate, cold-start and failover time.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Negative caching</td><td>Protects origin from repeated misses</td><td>Can hide newly created data</td></tr>
+                    <tr><td>Bloom filter</td><td>Cheap rejection before origin</td><td>False positives, rebuild path</td></tr>
+                    <tr><td>Serve stale on failure</td><td>Availability, origin protection</td><td>Users see old data</td></tr>
+                    <tr><td>Fail closed</td><td>Correctness and security</td><td>Lower availability</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Stampede -</strong> single-flight, SWR, early refresh, origin concurrency cap.</li>
+                <li><strong>Avalanche -</strong> TTL jitter, staggered warming, gradual traffic, bounded refill.</li>
+                <li><strong>Penetration -</strong> validation, negative cache, Bloom filter, rate limit.</li>
+                <li><strong>Outage crushes DB -</strong> circuit breaker, bulkhead, bounded fallback, stale, shedding.</li>
+                <li><strong>Cold-start miss storm -</strong> preload hot keys, slow ramp, admission control.</li>
+                <li><strong>Negative cache hides new entity -</strong> invalidate on create, short TTL.</li>
+                <li><strong>TTL too short / too long -</strong> origin load vs stale data; base on staleness + invalidation.</li>
+                <li><strong>Cache pollution -</strong> admission policy, size limits, bypass low-reuse scans.</li>
+                <li><strong>Giant value → latency/OOM -</strong> cap size, cache IDs/chunks, paginate.</li>
+                <li><strong>Mass invalidation storm -</strong> versioned namespace, paced deletion, natural expiry.</li>
+                <li><strong>Blind retries amplify outage -</strong> deadlines, backoff + jitter, retry budget.</li>
+                <li><strong>Write-behind loses data -</strong> durable log/queue, replication, checkpoints, replay.</li>
+                <li><strong>Tenant data leak -</strong> namespaced keys, authorize before lookup.</li>
+                <li><strong>High hit ratio, bad p99 -</strong> track bytes, per-shard p99, miss-path tails.</li>
+                <li><strong>Metrics hide failure -</strong> per key class, shard, region, and miss reason.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>What happens if Redis goes down?</summary><p>Open a circuit, cap DB fallback, serve stale where safe, shed optional traffic, refill gradually - never send everything to the DB at once.</p></details>
+                <details class="recall-card"><summary>How do you prevent a stampede?</summary><p>Single-flight/coalescing, stale-while-revalidate, early refresh, TTL jitter, bounded origin concurrency.</p></details>
+                <details class="recall-card"><summary>What is cache avalanche?</summary><p>Many keys expire or vanish together → broad origin spike. Stagger TTLs, warm gradually, cap refill.</p></details>
+                <details class="recall-card"><summary>How do you handle nonexistent-key attacks?</summary><p>Validate inputs, briefly negative-cache misses, optional Bloom filter (false positives, no false negatives), rate-limit.</p></details>
+                <details class="recall-card"><summary>Why can a 99% hit ratio still be bad?</summary><p>The 1% may cluster at peak, be expensive, or dominate p99; large values or one hot shard make hits slow too.</p></details>
+                <details class="recall-card"><summary>Microsoft Senior SE (Mar 2026): excess misses - size or policy?</summary><p>Break misses down by reason (absent, expired, evicted, invalidated, bypassed); compare working set vs memory, eviction rate, TTL, reuse, shard skew, cold starts.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#reliability">Reliability</a></li><li><a href="#metrics">Metrics</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>When the cache dies, protect the database first. Latency comes second.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

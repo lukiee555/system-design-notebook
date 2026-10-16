@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: keys, constraints, relationships, indexes, and normalization.">
+  <title>Schema Design | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="schema-design">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Schema Design</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Data Modeling</p>
+          <h1>Schema Design: Keys, Indexes, Normalization</h1>
+          <p>Stable IDs, invariants as constraints, indexes derived from queries, and a normalized source of truth with selective denormalization.</p>
+          <div class="hero-meta"><span class="pill">PK / FK</span><span class="pill">Constraints</span><span class="pill">Cardinality</span><span class="pill">Composite indexes</span><span class="pill">Denormalization</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="visual">
+              <div class="section-heading"><div><h2>Cheat sheets</h2><p>Tap for full size.</p></div></div>
+              <div class="card-grid">
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/schema-design/keys-and-constraints.webp" aria-label="Open keys and constraints">
+                    <img src="../assets/media/topics/schema-design/keys-and-constraints.webp" width="1280" height="1750" loading="eager" decoding="async" alt="Social-schema example with stable primary keys, foreign keys, indexes, and uniqueness constraints.">
+                  </a>
+                  <figcaption>Keys and constraints</figcaption>
+                </figure>
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/schema-design/relationship-cardinalities.webp" aria-label="Open relationship cardinalities">
+                    <img src="../assets/media/topics/schema-design/relationship-cardinalities.webp" width="1280" height="1750" loading="eager" decoding="async" alt="One-to-many, many-to-many through a junction table, and limited one-to-one cases.">
+                  </a>
+                  <figcaption>Relationship cardinalities</figcaption>
+                </figure>
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/schema-design/access-pattern-indexes.webp" aria-label="Open access patterns to indexes">
+                    <img src="../assets/media/topics/schema-design/access-pattern-indexes.webp" width="1280" height="1750" loading="lazy" decoding="async" alt="Mapping from API to query shape to composite index or uniqueness rule.">
+                  </a>
+                  <figcaption>Access patterns → indexes</figcaption>
+                </figure>
+                <figure class="media-frame">
+                  <a href="../assets/media/topics/schema-design/normalization-strategies.webp" aria-label="Open normalization strategies">
+                    <img src="../assets/media/topics/schema-design/normalization-strategies.webp" width="1280" height="1750" loading="lazy" decoding="async" alt="Normalized truth, selective immutable denormalization, and a rebuildable cached projection.">
+                  </a>
+                  <figcaption>Normalization strategies</figcaption>
+                </figure>
+              </div>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Stable generated IDs as PKs - never email, phone, or username.</li>
+                <li>Business invariants → <code>UNIQUE</code>, <code>NOT NULL</code>, <code>CHECK</code>, or a transaction; DB constraints are race-safe.</li>
+                <li>1:N → FK on the child; N:M → junction table; 1:1 → usually merge.</li>
+                <li>Every important index comes from an API; composite order = equality first, then range/sort.</li>
+                <li>Normalize first; denormalize only proven hot reads, immutable snapshots, audit/events, search/analytics, rebuildable caches.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="keys">
+              <div class="section-heading"><div><h2>Entities, keys, constraints, relationships</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Entities -</strong> important domain nouns. Social: <code>users, posts, comments, likes, follows</code>. Booking: <code>venues, shows, seats, holds, bookings, payments</code>. Commerce: <code>products, inventory, carts, orders, order_items, payments</code>.</li>
+                <li><strong>Primary keys -</strong> stable IDs (<code>user_id</code>, <code>order_id</code>) keep references stable when business rules change.</li>
+                <li><strong>Foreign keys -</strong> prevent orphans, but add write cost. Across shards/services, enforce in workflows + reconciliation.</li>
+                <li><strong>Constraints -</strong> <code>NOT NULL</code> mandatory data, <code>UNIQUE</code> identity and idempotency, <code>CHECK</code> ranges/states. App-only read-then-write checks race.</li>
+                <li><strong>Cardinality -</strong> 1:N <code>posts.user_id</code>; N:M <code>likes(user_id, post_id)</code>; 1:1 only for security, ownership, lifecycle, size, or access-frequency reasons.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="indexes">
+              <div class="section-heading"><div><h2>Access patterns and indexes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Start from the API -</strong> write the approximate query, then choose indexes.</li>
+                <li><strong>Index -</strong> critical filters, joins, uniqueness checks, range scans, ordering. Not every column.</li>
+                <li><strong>One composite beats several singles -</strong> e.g. <code>(user_id, created_at DESC)</code> for a user's recent posts.</li>
+                <li><strong>Cost -</strong> storage + extra work on every insert, update, delete.</li>
+                <li><strong>Pagination -</strong> cursor on <code>(created_at, id)</code>; avoid large <code>OFFSET</code>.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="normalization">
+              <div class="section-heading"><div><h2>Normalization and denormalization</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Normalize first -</strong> each mutable fact in one place; fewer anomalies and conflicting copies; joins are fine while fast enough.</li>
+                <li><strong>Denormalize selectively -</strong> immutable snapshots (<code>order_items.unit_price_at_purchase</code>), audit/event records, search documents, analytics tables, precomputed feeds/aggregates.</li>
+                <li><strong>Define ownership -</strong> who updates the copy, acceptable staleness, retries, reconciliation, rebuild.</li>
+                <li><strong>Cached projection -</strong> source DB stays normalized; cache holds a read-ready joined object; disposable and rebuildable.</li>
+                <li><strong>Slow joins -</strong> try targeted index, cached projection, materialized view, or precomputation before abandoning SQL.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Normalized source of truth</td><td>One authoritative value, simpler updates</td><td>More joins or read composition</td></tr>
+                    <tr><td>Selective denormalization</td><td>Faster reads, fewer joins</td><td>Storage, write amplification, stale copies</td></tr>
+                    <tr><td>Foreign keys</td><td>DB-enforced referential integrity</td><td>Validation cost; hard across shards/services</td></tr>
+                    <tr><td>Application-enforced integrity</td><td>Works across services and stores</td><td>Orphans, races, reconciliation, cleanup</td></tr>
+                    <tr><td>More indexes</td><td>Faster supported reads</td><td>More storage, slower writes</td></tr>
+                    <tr><td>Composite index</td><td>Efficient filter + sort</td><td>Only helps when the query matches leading columns</td></tr>
+                    <tr><td>Embedded children</td><td>One read returns the aggregate</td><td>Large documents, contention, unbounded growth</td></tr>
+                    <tr><td>Referenced children</td><td>Independent growth and pagination</td><td>Extra query or join</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Email/username as PK -</strong> generated ID + <code>UNIQUE</code> business field.</li>
+                <li><strong>Missing uniqueness invariant -</strong> <code>UNIQUE</code> or composite PK.</li>
+                <li><strong>Uniqueness checked only in app code -</strong> let the DB constraint resolve races.</li>
+                <li><strong>Index on every column -</strong> index only critical filters, joins, sorts, uniqueness.</li>
+                <li><strong>Wrong composite order -</strong> equality before range/sort.</li>
+                <li><strong>Unbounded embedded array -</strong> separate table/collection + pagination.</li>
+                <li><strong>Denormalizing all mutable data -</strong> keep normalized truth; copy only proven read projections.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>How do you prevent duplicate likes?</summary><p><code>PRIMARY KEY(user_id, post_id)</code> or a unique constraint + idempotent insert (<code>ON CONFLICT DO NOTHING</code>).</p></details>
+                <details class="recall-card"><summary>Why is "check then insert" in app code insufficient?</summary><p>Concurrent requests can both pass the check; the DB constraint is the race-safe guard.</p></details>
+                <details class="recall-card"><summary>Load a user's latest posts efficiently?</summary><p>Index <code>(user_id, created_at DESC, id)</code> + cursor pagination; avoid large <code>OFFSET</code>.</p></details>
+                <details class="recall-card"><summary>Embed comments in the post document?</summary><p>Only with a strict small bound; otherwise store separately by <code>post_id</code>.</p></details>
+                <details class="recall-card"><summary>When and how do you denormalize?</summary><p>After indexing and caching still leave a critical read too slow. Authoritative write + outbox/CDC, idempotent consumers, lag monitoring, replay/rebuild.</p></details>
+                <details class="recall-card"><summary>Mutable product names in old orders?</summary><p>Keep products normalized; copy immutable "at purchase" fields into <code>order_items</code> as a snapshot.</p></details>
+                <details class="recall-card"><summary>When should foreign keys be removed?</summary><p>Only when write scale, service ownership, or sharding makes them impractical; replace with validated workflows, idempotency, reconciliation, orphan cleanup.</p></details>
+                <details class="recall-card"><summary>How do you prevent double booking?</summary><p>A row per seat per show, unique constraint or atomic state transition, short-lived hold with expiry, confirm in a transaction.</p></details>
+                <details class="recall-card"><summary>How do you change a schema safely?</summary><p>Expand-and-contract: add compatible fields, deploy dual-compatible code, backfill, switch reads/writes, remove old fields.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#visual">Cheat sheets</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#keys">Keys and relationships</a></li><li><a href="#indexes">Indexes</a></li><li><a href="#normalization">Normalization</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>Invariant → constraint. Query → index. Hot read → projection, not duplicated truth.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

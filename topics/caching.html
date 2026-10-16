@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: caching.">
+  <title>Caching | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="caching">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Caching</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · System Design Fundamentals</p>
+          <h1>Caching</h1>
+          <p>Serve repeated reads from faster storage to cut latency and backend load - with an explicit plan for population, expiry, invalidation, eviction, and failure.</p>
+          <div class="hero-meta"><span class="pill">Cache-aside</span><span class="pill">Write-through / behind</span><span class="pill">TTL &amp; eviction</span><span class="pill">Stampede</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="visual">
+              <div class="section-heading"><div><h2>Cheat sheet</h2></div></div>
+              <figure class="media-frame">
+                <a href="../assets/media/topics/caching/caching-cheat-sheet.webp" aria-label="Open the full-size cheat sheet">
+                  <img src="../assets/media/topics/caching/caching-cheat-sheet.webp" width="1536" height="1024" loading="eager" decoding="async" alt="Caching cheat sheet: cache flow, cache types, population strategies, invalidation, eviction, technologies, and failure patterns.">
+                </a>
+                <figcaption>Cache flow, types, population strategies, invalidation, eviction, and failure patterns (tap for full size).</figcaption>
+              </figure>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Cache layers: browser, CDN, local (in-process), application, distributed.</li>
+                <li>Population: cache-aside, read-through, write-through, write-behind, refresh-ahead.</li>
+                <li><strong>Cache-aside:</strong> the app handles misses. <strong>Read-through:</strong> the cache layer loads from the source.</li>
+                <li>Freshness: TTL, explicit invalidation, versioned keys. Eviction: LRU / LFU.</li>
+                <li>Every design needs a failure plan: stampede, hot keys, penetration, node loss.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="design-checklist">
+              <div class="section-heading"><div><h2>Design checklist</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Requirements -</strong> read/write ratio, freshness tolerance, object size, hot working set, durability.</li>
+                <li><strong>Estimation -</strong> <code>hot entries × avg entry size × replication factor × overhead</code>.</li>
+                <li><strong>High-level design -</strong> app checks cache; on a miss, read DB/origin, populate cache, return.</li>
+                <li><strong>Deep dives -</strong> stampede, hot keys, penetration, TTL jitter, negative caching, replication, invalidation events, fail-open vs fail-closed.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Cache-aside</td><td>Simple; only requested data is cached</td><td>Cold-miss penalty, invalidation complexity</td></tr>
+                    <tr><td>Write-through</td><td>Cache stays relatively fresh</td><td>Extra latency on every write</td></tr>
+                    <tr><td>Write-behind</td><td>Low write latency, high throughput</td><td>Data loss, ordering, recovery risk</td></tr>
+                    <tr><td>Local in-process cache</td><td>Lowest latency, no network hop</td><td>Duplicated memory, cross-instance inconsistency</td></tr>
+                    <tr><td>Distributed cache</td><td>Shared view, independent scaling</td><td>Network hop, another distributed dependency</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Stampede after a popular key expires -</strong> request coalescing / single-flight, jittered TTLs, early refresh, stale-while-revalidate.</li>
+                <li><strong>Repeated lookups of nonexistent keys -</strong> negative caching, Bloom filters, validation, rate limiting.</li>
+                <li><strong>Stale data -</strong> bounded TTL, versioned keys, write-triggered invalidation, event-driven refresh.</li>
+                <li><strong>Cache node fails -</strong> replicas, consistent-hash remapping, controlled origin fallback, gradual warming.</li>
+                <li><strong>One hot key overloads a node -</strong> replicate or split/salt the key, add an L1 cache, adaptive routing. Virtual nodes alone don't split one hot key.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Microsoft (2025): single-machine cache vs distributed cache - design the distributed one.</summary><p>Local caches are fastest but isolated and hard to invalidate consistently. A distributed cache uses partitioning, consistent hashing, replication, TTL/eviction, and stampede/hot-key protection.</p></details>
+                <details class="recall-card"><summary>Frequent: design a distributed cache like Redis or Memcached.</summary><p>Clarify item size, read/write mix, freshness, durability. Partition with consistent hashing + virtual nodes, replicate, use cache-aside, TTL, eviction, failure fallback, and hotspot protection.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#visual">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#design-checklist">Design checklist</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+
+            <section class="section-card"><h2 style="margin-top:0;font-size:1rem">Go deeper</h2><p><a href="caching-strategy.html">Caching in Depth →</a></p></section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>Name five things for any cache: populate, expire, invalidate, evict, fail.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

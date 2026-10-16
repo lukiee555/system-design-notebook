@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: data modeling approach and database choice.">
+  <title>Data Modeling Approach | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="data-modeling">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Data Modeling Approach</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Data Modeling</p>
+          <h1>Data Modeling Approach</h1>
+          <p>Decide the entities, their IDs and relationships, where data lives, and how it is queried - driven by data volume, access patterns, and consistency.</p>
+          <div class="hero-meta"><span class="pill">PostgreSQL first</span><span class="pill">Database choice</span><span class="pill">Minimal schema</span><span class="pill">Interview flow</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:760px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/data-modeling/data-modeling-quick-revision.webp" aria-label="Open the data modeling quick revision cheat sheet">
+            <img src="../assets/media/topics/data-modeling/data-modeling-quick-revision.webp" width="1024" height="1536" loading="eager" decoding="async" alt="Data modeling quick revision cheat sheet: the MODEL memory aid and the complete interview answer flow.">
+          </a>
+          <figcaption>Data Modeling Quick Revision Cheat Sheet (tap for full size)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="visual">
+              <div class="section-heading"><div><h2>Database model options</h2><p>Tap for full size.</p></div></div>
+              <figure class="media-frame">
+                <a href="../assets/media/topics/data-modeling/database-model-options.webp" aria-label="Open the database model options sheet">
+                  <img src="../assets/media/topics/data-modeling/database-model-options.webp" width="1280" height="1750" loading="eager" decoding="async" alt="Relational, document, key-value, wide-column, and graph database models with examples and selection guidance.">
+                </a>
+                <figcaption>Database model options</figcaption>
+              </figure>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Model from <strong>requirements and access patterns</strong>, not a favourite technology.</li>
+                <li>Default: <strong>PostgreSQL + normalized schema</strong> unless a concrete query, consistency, or scale need says otherwise.</li>
+                <li>Show the <strong>minimum useful schema</strong>: core fields, PKs, FKs, key constraints, indexes, optional partition key.</li>
+                <li>Tie every decision to <strong>data volume</strong>, <strong>access patterns</strong>, or <strong>consistency</strong>.</li>
+                <li>Used twice in an interview: entities during requirements, a minimal schema during high-level design.</li>
+                <li>"Good enough" is the target - over-modeling wastes time.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="database-options">
+              <div class="section-heading"><div><h2>Database model options</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Relational (default) -</strong> structured entities, joins, transactions, uniqueness, integrity. Users, orders, bookings, inventory, payments, posts. Scale it first with indexes, pooling, caching, replicas, partitioning, vertical scaling.</li>
+                <li><strong>Document -</strong> rapidly changing, nested, varied records. Embedding removes joins but complicates updates; never embed unbounded lists. Interview scope is usually stable, so the main reason for it often doesn't exist.</li>
+                <li><strong>Key-value -</strong> exact-key reads: sessions, flags, counters, cached objects, idempotency records, rate-limit state. Usually complements SQL, not replaces it.</li>
+                <li><strong>Wide-column -</strong> huge append-heavy writes: telemetry, events, activity history. Model from queries, e.g. <code>partition_key = user_id</code>, <code>clustering_key = timestamp</code>.</li>
+                <li><strong>Graph -</strong> only when multi-hop traversal dominates. Friends/followers alone don't justify it; a relationship table is usually enough.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-flow">
+              <div class="section-heading"><div><h2>Applying it in an interview</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Requirements -</strong> core entities; key writes and reads (filter, sort, pagination, aggregation); unique fields → constraints; which writes need a transaction; strong vs eventual consistency; unbounded relationships; data lifecycle (retention, soft delete, audit); hottest entity.</li>
+                <li><strong>Estimation -</strong> rows/day, raw storage, practical storage (+ replicas, indexes, overhead), relationship cardinality (avg and max).</li>
+                <li><strong>High-level design -</strong> PostgreSQL as source of truth, minimal schema, indexes derived from APIs, cache hot projections, cursor pagination, shard only when capacity math requires it.</li>
+              </ul>
+              <pre>rows/day        = write QPS × 86,400
+raw storage     = records × avg record size × retention
+practical       = raw + replication + indexes + overhead</pre>
+              <ul class="lead-list">
+                <li><strong>Moderate QPS, hundreds of GB -</strong> one relational primary + replicas.</li>
+                <li><strong>Billions of append-only records -</strong> partitioning, archival, or a write-optimized model.</li>
+                <li><strong>A few very hot keys -</strong> caching, replication, key splitting.</li>
+                <li><strong>Unbounded children -</strong> separate table + cursor pagination.</li>
+              </ul>
+              <pre>users(id PK, username UNIQUE NOT NULL, email UNIQUE NOT NULL, created_at)
+posts(id PK, user_id FK, content NOT NULL, created_at)
+comments(id PK, post_id FK, user_id FK, content NOT NULL, created_at)
+likes(user_id FK, post_id FK, created_at, PRIMARY KEY (user_id, post_id))
+
+posts(user_id, created_at DESC)  → recent posts by user
+comments(post_id, created_at)    → paginated comments
+likes(post_id)                   → list/count likes</pre>
+              <p>Keys, indexes, normalization: <a href="schema-design.html">Schema Design</a>. Partitioning: <a href="sharding.html">Sharding and Shard Keys</a>.</p>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Relational as default</td><td>Transactions, joins, constraints, flexible queries</td><td>Schema evolution and horizontal scale need planning</td></tr>
+                    <tr><td>Document database</td><td>Flexible nested records, fewer joins</td><td>Update complexity, duplication, unbounded documents</td></tr>
+                    <tr><td>Key-value store</td><td>Very low-latency exact-key access</td><td>Weak ad-hoc queries and relationships</td></tr>
+                    <tr><td>Wide-column store</td><td>High append throughput, predictable partition scans</td><td>Query-first schema; new access pattern = new table</td></tr>
+                    <tr><td>Graph database</td><td>Efficient multi-hop traversal</td><td>Operational complexity, often unnecessary</td></tr>
+                    <tr><td>One primary store</td><td>Simple ownership and consistency</td><td>Not optimal for every workload</td></tr>
+                    <tr><td>Polyglot persistence</td><td>Each workload gets an optimized store</td><td>Sync, observability, migrations, ops burden</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>NoSQL just because it's "large" -</strong> start simple and name the exact limitation first.</li>
+                <li><strong>Tables before APIs -</strong> list critical access patterns, then derive schema and indexes.</li>
+                <li><strong>Dual-writing two stores without failure handling -</strong> outbox/CDC, idempotent consumers, replay, reconciliation.</li>
+                <li><strong>Cache treated as durable truth -</strong> keep it rebuildable; design for cache loss.</li>
+                <li><strong>Ignoring deletes -</strong> define restrict/cascade, soft delete, retention, tombstones, async cleanup.</li>
+                <li><strong>Unsafe migrations -</strong> expand-and-contract: add compatible fields, dual-compatible code, backfill, switch, remove.</li>
+                <li><strong>Over-modeling the whiteboard -</strong> show only what proves the design works.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Kotak SDE-2 (Aug 2026): parcel delivery - schema, APIs, lifecycle, tracking, assignment, pricing.</summary><p><code>users</code>, <code>shipments</code>, <code>shipment_events</code>, <code>delivery_assignments</code>, <code>pricing_rules</code>, <code>payments</code>. Latest status on <code>shipments</code>, immutable history in <code>shipment_events</code>, unique <code>tracking_number</code>, index <code>(shipment_id, event_time)</code>, atomic state transition for assignment.</p></details>
+                <details class="recall-card"><summary>Media.net (Jul 2026): Amazon-like database schema.</summary><p><code>users</code>, <code>addresses</code>, <code>products</code>, <code>sellers</code>, <code>inventory</code>, <code>carts</code>, <code>cart_items</code>, <code>orders</code>, <code>order_items</code>, <code>payments</code>. Immutable name/price snapshot in <code>order_items</code>, index orders by <code>(user_id, created_at)</code>, update inventory and order state in one transaction.</p></details>
+                <details class="recall-card"><summary>Agoda (May 2026): cinema booking schema without double booking.</summary><p><code>cinemas</code>, <code>screens</code>, <code>seats</code>, <code>shows</code>, <code>show_seats</code>, <code>seat_holds</code>, <code>bookings</code>, <code>payments</code>. One active owner per <code>(show_id, seat_id)</code>, atomic conditional update or row lock, TTL-expiring holds.</p></details>
+                <details class="recall-card"><summary>Nykaa SDE-2 (Mar 2026): multi-outlet restaurant with ingredient consistency under concurrent orders.</summary><p><code>outlets</code>, <code>menu_items</code>, <code>outlet_menu</code>, <code>ingredients</code>, <code>recipes</code>, <code>outlet_inventory</code>, <code>orders</code>, <code>order_items</code>, <code>payments</code>. Scope by <code>outlet_id</code>; deduct stock with versioned/conditional updates in a transaction; reject or compensate failures.</p></details>
+                <details class="recall-card"><summary>Swiggy SDE-2 (Mar 2026): notifications - SMS, email, in-app history, scheduling.</summary><p><code>users</code>, <code>devices</code>, <code>notification_preferences</code>, <code>templates</code>, <code>notifications</code>, <code>delivery_attempts</code>. Idempotency key per event, index <code>(user_id, created_at)</code> for history and <code>(status, next_attempt_at)</code> for workers, append attempts.</p></details>
+                <details class="recall-card"><summary>PayTM SSE (Jan 2026) / Atlassian: Wiki/Confluence schema.</summary><p><code>workspaces</code>, <code>pages</code>, <code>page_versions</code>, <code>memberships</code>, <code>page_acl</code>, <code>tags</code>, <code>page_tags</code>, <code>comments</code>. Immutable versions, <code>UNIQUE(workspace_id, slug)</code>, index <code>(page_id, version_no DESC)</code>, current metadata separate from version content.</p></details>
+                <details class="recall-card"><summary>PayPal Senior SWE: configs, feature flags, versions, audit, rollback.</summary><p><code>services</code>, <code>environments</code>, <code>config_keys</code>, <code>config_versions</code>, <code>active_config</code>, <code>feature_flags</code>, <code>rollout_rules</code>, <code>audit_events</code>. Immutable versions, switch an active pointer to roll out/back, cache resolved config, publish invalidation events.</p></details>
+                <details class="recall-card"><summary>Atlassian P40/P50: show a scalable friend count beside every post.</summary><p>Canonical friendship pair indexed both directions; a <code>friend_count</code> projection per user updated transactionally or via idempotent events, plus reconciliation. Counting rows on every read is exact but too expensive.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#visual">Database model options</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#database-options">Database options</a></li><li><a href="#interview-flow">Interview flow</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>"Key-value over SQL" is usually wrong framing - production systems use both.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

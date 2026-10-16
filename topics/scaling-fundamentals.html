@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: scale from zero to millions of users.">
+  <title>Scale From Zero to Millions of Users | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="scaling-fundamentals">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Scaling Fundamentals</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · System Design Fundamentals</p>
+          <h1>Scale From Zero to Millions of Users</h1>
+          <p>How a system grows from a single server into a resilient, multi-region architecture - one bottleneck, and one deliberate trade-off, at a time.</p>
+          <div class="hero-meta"><span class="pill">Iterative scaling</span><span class="pill">Replication vs sharding</span><span class="pill">Stateless web tier</span><span class="pill">Cache, CDN, queues</span></div>
+        </section>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="section-card" id="architecture">
+              <div class="section-heading"><div><h2>Final architecture</h2><p>The end state, reached by fixing one bottleneck at a time - not a day-one design.</p></div></div>
+              <figure class="media-frame">
+                <a href="../assets/media/topics/scaling-fundamentals/final-scalable-system.png" aria-label="Open the full-resolution architecture image">
+                  <picture>
+                    <source srcset="../assets/media/topics/scaling-fundamentals/final-scalable-system.webp" type="image/webp">
+                    <img src="../assets/media/topics/scaling-fundamentals/final-scalable-system.png" width="1536" height="1024" loading="eager" decoding="async" alt="Final scalable system: global users reach GeoDNS, which routes to the nearest healthy region. Each region has a CDN, load balancer, stateless web servers, a distributed cache, a sharded database with primary and read replicas, and a message queue feeding workers. Two regions replicate with failover.">
+                  </picture>
+                </a>
+                <figcaption>End-state architecture (tap for full resolution). Queues, workers, multi-region routing, and supporting services are practical production extensions, not day-one requirements.</figcaption>
+              </figure>
+              <p><strong>Paths:</strong> static → CDN edge · read-hit → cache · read-miss → replica/shard then fill cache · write → primary then replicate + invalidate cache · async → queue → worker · region failure → GeoDNS reroutes to a healthy region.</p>
+            </section>
+
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <p><strong>Core idea:</strong> start simple, find the next bottleneck, add the one component that fixes it, and name the trade-off it introduces.</p>
+              <ul class="revision-list">
+                <li>Single server → split web and data tiers so each scales alone.</li>
+                <li>Load balancer + stateless web servers → horizontal scale and failover; sessions move to a shared store.</li>
+                <li>Read replicas → read scale and failover, but lag and a primary write bottleneck remain.</li>
+                <li>Cache + CDN → fast hot reads and static assets; plan TTL, invalidation, and fallback.</li>
+                <li>Multi-DC + GeoDNS → regional failover and lower latency, at the cost of data sync.</li>
+                <li>Queue + workers → move slow work off the request path.</li>
+                <li>Sharding → split data when one DB can't hold or serve it; pick a key that spreads data and traffic.</li>
+              </ul>
+              <p><strong>Remember:</strong> replication copies data (read scale + redundancy); sharding splits data (dataset + traffic scale). A replica is not a backup.</p>
+            </section>
+
+            <section class="section-card" id="key-ideas">
+              <div class="section-heading"><div><h2>Key ideas</h2><p>The essentials behind each step.</p></div></div>
+              <ul class="lead-list">
+                <li><strong>Vertical vs horizontal —</strong> scale up is simple but capped and still one failure point; scale out adds redundancy but needs traffic distribution and coordination.</li>
+                <li><strong>Stateless web tier —</strong> keep no session in local memory, so any healthy server serves any request and autoscaling and rolling deploys work.</li>
+                <li><strong>Replication —</strong> writes to primary, reads from replicas; watch lag (stale reads) and remember the primary is still the write bottleneck.</li>
+                <li><strong>Cache —</strong> hit returns fast; miss hits the DB then fills the cache. The key must include every input; plan TTL, eviction (LRU/LFU), invalidation, and an outage fallback.</li>
+                <li><strong>CDN —</strong> serve static assets from the edge; use versioned filenames and an origin fallback.</li>
+                <li><strong>Queue + workers —</strong> enqueue slow work, ack the user, process async; handle retries, duplicates, and backlog.</li>
+                <li><strong>Sharding —</strong> <code>shard = hash(key) % N</code>; a good key avoids hotspots and scatter-gather. Challenges: resharding, cross-shard joins and transactions.</li>
+                <li><strong>SQL vs NoSQL —</strong> relational for transactions, joins, and a stable schema; NoSQL for simple, huge-scale, flexible access. Often both (polyglot).</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="active-recall">
+              <div class="section-heading"><div><h2>Active recall</h2><p>Answer before revealing.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Why start with a single server?</summary><p>Cheap, simple, and fast to build; distributed complexity isn't justified until requirements demand it.</p></details>
+                <details class="recall-card"><summary>Why does a bigger server add capacity but not availability?</summary><p>It is still one machine with no redundancy, so still a single point of failure.</p></details>
+                <details class="recall-card"><summary>Replication vs sharding?</summary><p>Replication copies the same data for read scale and redundancy; sharding splits different data for dataset and traffic scale.</p></details>
+                <details class="recall-card"><summary>What causes a stale read after a write?</summary><p>Reading a lagging replica, or a stale cache entry that was not invalidated.</p></details>
+                <details class="recall-card"><summary>Cache miss, and if the cache fails?</summary><p>Miss queries the DB then fills the cache. If the cache fails, the DB takes the full read load - plan fallback and protection.</p></details>
+                <details class="recall-card"><summary>What makes a shard key dangerous?</summary><p>It concentrates traffic (celebrity/hotspot) or forces cross-shard queries.</p></details>
+              </div>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2><p>Every component improves one thing and costs another.</p></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Separate tiers</td><td>Independent scaling</td><td>More moving parts</td></tr>
+                    <tr><td>Horizontal scaling</td><td>Capacity + redundancy</td><td>Coordination and ops</td></tr>
+                    <tr><td>Load balancer</td><td>Healthy traffic distribution</td><td>Another critical tier</td></tr>
+                    <tr><td>Read replicas</td><td>Read throughput + failover</td><td>Lag; primary write bottleneck</td></tr>
+                    <tr><td>Cache</td><td>Low latency, fewer DB reads</td><td>Invalidation, staleness, outage</td></tr>
+                    <tr><td>CDN</td><td>Fast assets, origin offload</td><td>Cost, expiry, invalidation</td></tr>
+                    <tr><td>Stateless tier</td><td>Free routing + autoscaling</td><td>Needs shared state store</td></tr>
+                    <tr><td>Multi-DC</td><td>Regional resilience, latency</td><td>Data sync + deploy complexity</td></tr>
+                    <tr><td>Queue + workers</td><td>Decoupling, async scale</td><td>Backlog, retries, duplicates</td></tr>
+                    <tr><td>Sharding</td><td>Dataset + traffic scale</td><td>Resharding, hotspots, joins</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="callout" style="margin-top:1rem"><strong>Rule of thumb:</strong> replication copies the same data (read scale + redundancy); sharding splits different data (dataset + traffic scale).</div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2><p>Each capability adds new ways to fail.</p></div></div>
+              <ul class="lead-list">
+                <li><strong>Load balancer failure —</strong> the entry point is critical; use a redundant, health-checked deployment.</li>
+                <li><strong>Primary DB failure —</strong> promote a replica; promotion can lose recent writes if it lagged.</li>
+                <li><strong>Replica lag —</strong> stale reads after a write; use read-after-write routing where it matters.</li>
+                <li><strong>Cache outage —</strong> full read load hits the DB; use multiple nodes and controlled fallback.</li>
+                <li><strong>Hot key —</strong> one key overloads a node; replicate or split it and prevent stampedes.</li>
+                <li><strong>CDN stale asset —</strong> old file served; use TTL, versioned names, or invalidation.</li>
+                <li><strong>Queue backlog —</strong> producers outpace workers; scale consumers and alert on queue age and depth.</li>
+                <li><strong>Shard hotspot / resharding —</strong> uneven traffic or risky data moves; revisit partitioning and plan migration.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>100 users - smallest architecture?</summary><p>A single server (web + app + DB). Distributed complexity isn't justified yet.</p></details>
+                <details class="recall-card"><summary>Web CPU saturated, DB healthy - what first?</summary><p>Add stateless web servers behind a load balancer; leave the DB alone.</p></details>
+                <details class="recall-card"><summary>Where do sessions live behind a load balancer?</summary><p>A shared store (session cache/DB), never only local memory.</p></details>
+                <details class="recall-card"><summary>95% reads - how do replicas help and not help?</summary><p>They scale reads and enable failover; they don't scale writes or guarantee freshness.</p></details>
+                <details class="recall-card"><summary>Cache cluster fails, DB collapses - why?</summary><p>The DB took the full read load (thundering herd). Use multiple cache nodes, coalescing, rate limiting, and headroom.</p></details>
+                <details class="recall-card"><summary>Why process images behind a queue?</summary><p>Keep the request fast; ack the user and let workers do heavy work async.</p></details>
+                <details class="recall-card"><summary>Replication vs sharding in one line each?</summary><p>Replication copies the same data; sharding splits different data.</p></details>
+                <details class="recall-card"><summary>Strip the final diagram for a small startup.</summary><p>Keep single server or web+DB; drop CDN, multi-region, queues, and sharding until a real bottleneck demands them.</p></details>
+              </div>
+              <div class="callout" style="margin-top:1rem"><strong>Tip:</strong> narrate the evolution - "the bottleneck is X, so I add Y, which improves Z but costs W."</div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#architecture">Final architecture</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#key-ideas">Key ideas</a></li><li><a href="#active-recall">Active recall</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note" style="--tilt:-0.4deg"><h3>Remember</h3><p>Removing one bottleneck usually exposes the next. Name the trade-off you introduce at every step.</p></article>
+          </aside>
+        </div>
+
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

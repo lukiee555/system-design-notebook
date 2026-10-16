@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: cache consistency - races, versions, tombstones, read-after-write.">
+  <title>Cache Consistency | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="cache-consistency">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Cache Consistency</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Caching in Depth</p>
+          <h1>Cache Consistency</h1>
+          <p>Stale fills, lost and out-of-order invalidations, and how source versions, tombstones, and observability keep a cache honest.</p>
+          <div class="hero-meta"><span class="pill">Stale-fill race</span><span class="pill">Versions &amp; CAS</span><span class="pill">Tombstones</span><span class="pill">Read-your-writes</span><span class="pill">Multi-region</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/cache-consistency/cache-consistency-race-and-versioning.webp" aria-label="Open the cache consistency sheet">
+            <img src="../assets/media/topics/cache-consistency/cache-consistency-race-and-versioning.webp" width="1600" height="1067" loading="eager" decoding="async" alt="Stale-fill race, version-aware writes, eviction metadata, multi-region lag, and consistency monitoring.">
+          </a>
+          <figcaption>Cache consistency: race and versioning (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>TTL doesn't stop lost invalidations, out-of-order events, or stale fills.</li>
+                <li>Store only if <code>incoming.version ≥ cached.version</code>; versions come from the source (sequence, log offset), not wall clocks.</li>
+                <li>Deletes need versioned <strong>tombstones</strong>; version metadata must outlive evictions.</li>
+                <li>Read-after-write: version token, writer bypass, or primary read.</li>
+                <li>Measure consistency: sample invalidations, recheck, alert on lag.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="race">
+              <div class="section-heading"><div><h2>The stale-fill race</h2></div></div>
+              <pre>1. Read misses, starts DB fetch: x=42 @v1
+2. Write commits x=43 @v2
+3. v2 invalidation/update reaches cache first
+4. Delayed v1 read response arrives
+5. Naive fill overwrites v2 with stale v1
+
+fix: store only when incoming.version >= cached.version</pre>
+              <ul class="lead-list">
+                <li><strong>Eviction edge case -</strong> if v2 is evicted, the cache forgets v2 existed and a late v1 looks valid. Keep version metadata longer, store versioned tombstones, use immutable versioned keys, or revalidate at origin for critical paths.</li>
+                <li><strong>Deletes -</strong> carry <code>deleted @v3</code>; retain tombstones beyond max event/fill delay.</li>
+                <li><strong>Multi-key -</strong> invalidation isn't transactional across keys; prefer one aggregate key or versioned snapshots.</li>
+                <li><strong>Multi-region -</strong> async invalidation = regional stale windows; versioned events, lag metrics, primary reads for critical ops; decide stale-vs-fail during partitions.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="read-after-write">
+              <div class="section-heading"><div><h2>Read-after-write, weakest to strongest</h2></div></div>
+              <ol>
+                <li>Accept bounded staleness.</li>
+                <li>Invalidate the writer's L1 immediately.</li>
+                <li>Return a version token; reads require <code>version ≥ token</code>.</li>
+                <li>Bypass cache for the writing session.</li>
+                <li>Route to the primary / source of truth.</li>
+                <li>Wait for invalidation acknowledgement (higher latency, lower availability).</li>
+              </ol>
+            </section>
+
+            <section class="section-card" id="observability">
+              <div class="section-heading"><div><h2>Consistency observability</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Polaris-style (Meta) -</strong> sample invalidations, read cache replicas as a client, recheck at multiple timescales, bypass to origin only for persistent anomalies. Meta reported TAO going from six to ten nines (5-minute measure).</li>
+                <li><strong>Metrics -</strong> invalidation send/receive/retry/drop, lag by region and shard, stale-read samples, % consistent within 1/5/10 min, rejected version regressions.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Stale fill overwrites new value -</strong> source versions + compare-and-set.</li>
+                <li><strong>Lost invalidation -</strong> outbox/CDC, retries, dead letter, TTL backstop, alarms.</li>
+                <li><strong>Out-of-order invalidations -</strong> monotonic version; ignore older events.</li>
+                <li><strong>Duplicate events -</strong> idempotent consumer by event ID/version.</li>
+                <li><strong>Delete resurrected -</strong> versioned tombstone retained past the race window.</li>
+                <li><strong>Version lost on eviction -</strong> separate metadata/tombstone or origin revalidation.</li>
+                <li><strong>L1 instances disagree -</strong> pub/sub hints, short L1 TTL, version checks.</li>
+                <li><strong>Multi-region stale read -</strong> version tokens, lag metrics, primary read for critical paths.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Does TTL guarantee consistency?</summary><p>No. It only caps lifetime; lost/out-of-order invalidations and stale fills still happen inside it.</p></details>
+                <details class="recall-card"><summary>How do you stop a stale fill overwriting a newer value?</summary><p>Source-generated monotonic version + compare-and-set; keep version/tombstone metadata long enough to cover delayed fills.</p></details>
+                <details class="recall-card"><summary>How do you preserve read-your-writes?</summary><p>Return a version token; bypass or require a minimum version for that session; optionally wait for invalidation ack.</p></details>
+                <details class="recall-card"><summary>How do you invalidate L1 caches?</summary><p>Short L1 TTL + pub/sub invalidation as hints; version checks and L2/source validation are the backstop.</p></details>
+                <details class="recall-card"><summary>How do you monitor consistency without crushing the DB?</summary><p>Sample invalidations, recheck after backoff, use version-aware replies, bypass only for persistent anomalies.</p></details>
+                <details class="recall-card"><summary>Keep multiple regions consistent?</summary><p>Versioned async invalidation, regional lag metrics; critical reads go to the primary or enforce minimum versions.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#race">Stale-fill race</a></li><li><a href="#read-after-write">Read-after-write</a></li><li><a href="#observability">Observability</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>Every cache write carries a source version. Older never beats newer.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

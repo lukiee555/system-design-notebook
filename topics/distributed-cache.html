@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: distributed cache architecture - routing, partitioning, replication, hot keys.">
+  <title>Distributed Cache Architecture | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="distributed-cache">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Distributed Cache</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Caching in Depth</p>
+          <h1>Distributed Cache Architecture</h1>
+          <p>Routing, partitioning, replication, rebalancing, and hot keys - plus when to pick Redis or Memcached.</p>
+          <div class="hero-meta"><span class="pill">Client vs proxy routing</span><span class="pill">Hash slots</span><span class="pill">Replication</span><span class="pill">Hot keys</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/distributed-cache/distributed-cache-architecture-and-hot-keys.webp" aria-label="Open the distributed cache architecture sheet">
+            <img src="../assets/media/topics/distributed-cache/distributed-cache-architecture-and-hot-keys.webp" width="1600" height="1067" loading="eager" decoding="async" alt="L1/L2 cache architecture, routing, consistent hashing, replication, regional invalidation, rebalancing, and hot-key mitigation.">
+          </a>
+          <figcaption>Distributed cache architecture and hot keys (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Needs routing, sharding, replication, failover, hot-key handling, origin protection.</li>
+                <li>Client routing = fewer hops; proxy routing = simpler clients, extra hop.</li>
+                <li><code>hash % N</code> remaps most keys; consistent hashing or hash slots (Redis: 16,384) move only a slice.</li>
+                <li>Replicate across the failures you must survive; decide if stale replica reads are OK.</li>
+                <li>A hot key can melt one shard even at a great hit ratio.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="architecture">
+              <div class="section-heading"><div><h2>Architecture</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Client-side routing -</strong> library knows membership; high throughput; every client handles topology changes and stale metadata.</li>
+                <li><strong>Proxy routing -</strong> stable endpoint; central policy, auth, metrics; extra hop and its own scaling/failure.</li>
+                <li><strong>Partitioning -</strong> consistent hashing + virtual nodes (balance, weighted capacity) or fixed hash slots. See <a href="consistent-hashing.html">Consistent Hashing</a>.</li>
+                <li><strong>Replication &amp; failover -</strong> distinct nodes/racks/zones; health checks without flapping; promote replica; bound origin fallback; rebuild replicas gradually.</li>
+                <li><strong>Rebalancing -</strong> move only affected slots, stream in background, dual-read/forward during migration, warm new owners, watch miss amplification and origin QPS.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="hot-keys">
+              <div class="section-heading"><div><h2>Hot keys</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Detect -</strong> per-key and per-shard QPS, bytes, CPU, latency; top-N keys; skew alerts; per-key hit ratio.</li>
+                <li><strong>Mitigate -</strong> L1 near-cache; replicate the value across nodes; request coalescing; CDN if public; rate-limit abuse; split only partitionable values; dedicated tier for viral keys.</li>
+                <li><strong>Careful -</strong> salting <code>key:0..N</code> needs invalidation across every copy.</li>
+                <li><strong>Redis vs Memcached -</strong> Memcached for simple ephemeral objects; Redis for data structures, TTLs, atomic scripts, replication, cluster. Choose by semantics, not speed claims.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>Client-side routing</td><td>One fewer hop, high throughput</td><td>Complex clients, topology refresh</td></tr>
+                    <tr><td>Proxy routing</td><td>Simple clients, central controls</td><td>Extra hop, proxy bottleneck</td></tr>
+                    <tr><td>Consistent hashing</td><td>Limited remapping</td><td>Virtual-node metadata, migration tuning</td></tr>
+                    <tr><td>Fixed hash slots</td><td>Explicit ownership, controlled migration</td><td>Slot management; multi-key needs co-location</td></tr>
+                    <tr><td>Replicate hot key</td><td>Spreads reads</td><td>More invalidation copies, divergence</td></tr>
+                    <tr><td>Salt/split key</td><td>Spreads partitionable load</td><td>Aggregation and consistency complexity</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Hot key overloads a shard -</strong> L1, replicated value, coalescing, CDN, dedicated tier.</li>
+                <li><strong>Rebalance remaps too much -</strong> consistent hashing/slots, virtual nodes, gradual migration.</li>
+                <li><strong>Uneven shards evict early -</strong> per-shard metrics, weighted ownership, reshard, isolate tenants.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Microsoft (Feb 2026) / ServiceNow Staff: design a distributed cache like Redis.</summary><p>Clarify GET/PUT/DELETE, TTL, capacity, p99, consistency, durability. Then routing, partitioning, replication, eviction, failover, rebalancing, hot keys, origin fallback, metrics.</p></details>
+                <details class="recall-card"><summary>Microsoft SDE II L61 (2025): distributed LRU cache - HLD + LLD + tests.</summary><p>Separate API, routing, storage, eviction, clock/TTL, loader, replication. Per-shard LRU, not one global lock. Test hit/miss, update, eviction, expiry, races, node loss, rebalance.</p></details>
+                <details class="recall-card"><summary>Microsoft L61 (Nov 2025): PhotoCache as LRU, then single vs distributed.</summary><p>Single node: digest → value, HashMap + DLL, capacity, TTL. Distributed: namespace, shard by key, replicas, topology-aware client/proxy, hot keys, versioned invalidation, failover, monitoring.</p></details>
+                <details class="recall-card"><summary>Client-side or proxy routing?</summary><p>Client removes a hop and scales with clients; proxy centralizes topology and policy but adds a tier to scale.</p></details>
+                <details class="recall-card"><summary>How do you choose replicas?</summary><p>Place copies across the failures you need to survive, not just separate processes on one host; decide on stale replica reads.</p></details>
+                <details class="recall-card"><summary>How do you migrate the key format?</summary><p>Dual-read old/new, populate new on hit, dual-invalidate, monitor, drop old keys after max TTL. Avoid mass deletes.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#hot-keys">Hot keys</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>Look at per-key and per-shard metrics - cluster averages hide the hot spot.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

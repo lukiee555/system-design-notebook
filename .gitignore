@@ -1,0 +1,12 @@
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+.github/instructions/wmt-copilot.instructions.md
+
+# Local reference books (copyrighted, not for publication)
+docs/books/
+
+# Private prompts
+docs/private/

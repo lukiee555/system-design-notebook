@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: how database indexes work.">
+  <title>How Database Indexes Work | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="db-indexing">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">How Indexes Work</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · Database Indexing</p>
+          <h1>How Database Indexes Work</h1>
+          <p>An index is a separate access path from search values to rows. Its real win is fewer page reads - paid for with storage and slower writes.</p>
+          <div class="hero-meta"><span class="pill">Pages &amp; scans</span><span class="pill">Optimizer &amp; EXPLAIN</span><span class="pill">Clustered vs secondary</span><span class="pill">Hash index</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:760px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/db-indexing/database-indexing-quick-revision.webp" aria-label="Open the database indexing quick revision sheet">
+            <img src="../assets/media/topics/db-indexing/database-indexing-quick-revision.webp" width="1400" height="1867" loading="eager" decoding="async" alt="Database indexing quick revision: how indexes work, planner decisions, B+ trees, LSM trees, hash, geospatial, inverted indexes, and optimization patterns.">
+          </a>
+          <figcaption>Database Indexing Quick Revision Cheat Sheet (tap for full size)</figcaption>
+        </figure>
+
+        <div class="page-grid two-column" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>An index maps searchable values → row locators; the benefit is fewer <strong>page reads</strong>, not fewer comparisons.</li>
+                <li><strong>B+ tree</strong> is the default: equality, ranges, prefix, ordering; high fan-out keeps it shallow.</li>
+                <li><strong>Hash index</strong>: fast exact equality only - no ranges, prefix, or <code>ORDER BY</code>.</li>
+                <li>The optimizer may still pick a sequential scan - prove it with <code>EXPLAIN (ANALYZE, BUFFERS)</code>.</li>
+                <li>Every index costs storage, write work, WAL, cache pressure, and maintenance.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="how-it-works">
+              <div class="section-heading"><div><h2>How a lookup works</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Without an index -</strong> sequential scan: read every table page, inspect rows. Cost is page access and cache misses.</li>
+                <li><strong>With an index -</strong> <code>key → index entry → row locator → table page</code>. Entry = indexed key + locator + metadata.</li>
+                <li><strong>Locator is engine-specific -</strong> PostgreSQL points to heap tuples; InnoDB secondaries store the clustered PK; LSM engines reconcile across memory and files.</li>
+                <li><strong>Complexity -</strong> unindexed O(N) vs B-tree O(log<sub>B</sub> N) + row fetch, with B in the hundreds.</li>
+              </ul>
+              <pre>index size ≈ rows × (key + locator + overhead) ÷ fill factor
+e.g. 100M rows × ~56 B ÷ 0.70 ≈ 8 GB</pre>
+            </section>
+
+            <section class="section-card" id="optimizer">
+              <div class="section-heading"><div><h2>The optimizer decides</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Options -</strong> sequential scan, index scan, index-only scan, bitmap scan, parallel scan, scan + sort.</li>
+                <li><strong>Index wins -</strong> for highly selective predicates (few matching rows).</li>
+                <li><strong>Scan wins -</strong> small table, many matches, scattered rows, stale stats, expression/operator mismatch.</li>
+                <li><strong>Read the plan -</strong> scan type, estimated vs actual rows, <code>Index Cond</code> vs <code>Filter</code>, sort nodes, buffers, heap fetches.</li>
+                <li><strong>Bitmap scan -</strong> collect row locations from one or more indexes, combine, read pages in order. Between index scan and seq scan.</li>
+              </ul>
+              <div class="callout" style="margin-top:1rem"><strong>Warning:</strong> <code>EXPLAIN ANALYZE</code> executes the statement - wrap writes in a rolled-back transaction.</div>
+            </section>
+
+            <section class="section-card" id="clustered">
+              <div class="section-heading"><div><h2>Clustered vs secondary, and hash</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Clustered -</strong> defines row storage order (row at the leaf). One per table. Great locality for its ranges; wide/mutable keys bloat every secondary index.</li>
+                <li><strong>Secondary -</strong> separate structure pointing to a locator or clustered key. Many allowed; non-covered columns need an extra fetch.</li>
+                <li><strong>Engines differ -</strong> InnoDB clusters by PK; PostgreSQL tables are heaps even with a PK.</li>
+                <li><strong>Good primary key -</strong> stable, narrow, unique, immutable. Random UUIDs hurt locality; time-ordered IDs create a hot right edge.</li>
+                <li><strong>Hash index -</strong> <code>key → h(key) → bucket</code>; ~O(1) equality, but no order. Use only for pure equality with a proven advantage; otherwise B-tree.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="clarify">
+              <div class="section-heading"><div><h2>Clarifying questions → decisions</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Ask</th><th>Example answer</th><th>Decision</th></tr></thead>
+                  <tbody>
+                    <tr><td>Top query shapes?</td><td>User by email; latest posts by user</td><td>Unique B-tree on email; <code>(user_id, created_at DESC)</code></td></tr>
+                    <tr><td>Equality, range, text, or location?</td><td>Equality + time range</td><td>B+ tree, key order matches range and sort</td></tr>
+                    <tr><td>How many rows match?</td><td>1-50 of 100M</td><td>Index valuable; <code>LIMIT</code> + cursor</td></tr>
+                    <tr><td>Read/write ratio?</td><td>95% writes, append-heavy</td><td>Consider LSM; budget compaction</td></tr>
+                    <tr><td>Search freshness?</td><td>2 s lag OK</td><td>DB + outbox/CDC → inverted index</td></tr>
+                    <tr><td>Returned columns?</td><td>Four narrow columns</td><td>Evaluate covering index</td></tr>
+                    <tr><td>Data distribution?</td><td><code>ACTIVE</code> = 98% of rows</td><td>Skip full status index; partial index on the rare subset</td></tr>
+                    <tr><td>Distance model?</td><td>Earth distance, 5 km</td><td>Geographic type + exact spherical predicate</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost / risk</th></tr></thead>
+                  <tbody>
+                    <tr><td>No secondary index</td><td>Fastest writes, least storage</td><td>Large scans for selective reads</td></tr>
+                    <tr><td>Hash index</td><td>Very fast exact equality</td><td>No order, range, prefix, or <code>ORDER BY</code></td></tr>
+                    <tr><td>Clustered index</td><td>Locality and range access for one order</td><td>One order only; key affects every secondary</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Index exists but seq scan runs -</strong> too many matches, small table, stale stats → read the plan, refresh stats, or accept the scan.</li>
+                <li><strong>Over-indexed table, slow writes -</strong> drop unused/redundant indexes.</li>
+                <li><strong>Estimates far from actual -</strong> skew/correlation → refresh or extend statistics, rewrite query.</li>
+                <li><strong>Missing FK/join index -</strong> joins and cascading deletes scan the child table.</li>
+                <li><strong>New index causes latency or replica lag -</strong> online/concurrent build, headroom, throttle, monitor replicas.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Blinkit SDE-1 (Sep 2026): how does indexing work internally and why is it faster?</summary><p>Tables live in pages; a B+ tree holds sorted keys + row locators with large fan-out, so a lookup follows a few pages root → leaf, then fetches the row. Cost: storage and write maintenance. The optimizer may still scan - verify with <code>EXPLAIN</code>.</p></details>
+                <details class="recall-card"><summary>Tripjack SDE-1 (Aug 2026) / Arcesium (2025): clustered vs non-clustered.</summary><p>Clustered stores rows in key order (one per table, great range locality). Non-clustered is separate and points to a locator/clustered key (many allowed, extra fetch). InnoDB clusters by PK; PostgreSQL uses heaps.</p></details>
+                <details class="recall-card"><summary>Tide SDE-3 (2025): indexing, query optimization, B-tree vs B+ tree.</summary><p>Start from query shape and plan. B+ tree keeps routing keys inside and records at linked leaves for range scans. Composite: equality first, then range/order; keep it narrow; cover only when measured; check estimates, filters, sorts, buffers.</p></details>
+                <details class="recall-card"><summary>Freshworks Lead (2024): what is database indexing?</summary><p>An auxiliary structure mapping keys to rows to avoid full scans for selective queries. B+ tree default; hash, spatial, full-text for special cases. Costs storage and writes - add from real query patterns.</p></details>
+                <details class="recall-card"><summary>Why might a database ignore an existing index?</summary><p>Cheaper scan predicted: too many matches, small table, scattered rows, stale stats, mismatched expression/operator, or the index can't give the needed order.</p></details>
+                <details class="recall-card"><summary>Why is <code>LIKE '%term%'</code> hard for a B-tree?</summary><p>No known prefix to seek to. Use trigram or full-text indexes, or a search engine.</p></details>
+                <details class="recall-card"><summary>What happens when an indexed column is updated?</summary><p>Old entry removed/invalidated, new one added. MVCC keeps old versions until cleanup; LSM appends a new version and compacts later.</p></details>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky-column" aria-label="Page tools">
+            <section class="section-card">
+              <h2 style="margin-top:0;font-size:1rem">On this page</h2>
+              <ol class="toc-list"><li><a href="#cheat-sheet">Cheat sheet</a></li><li><a href="#quick-revision">Quick Revision</a></li><li><a href="#how-it-works">How a lookup works</a></li><li><a href="#optimizer">Optimizer</a></li><li><a href="#clustered">Clustered and hash</a></li><li><a href="#clarify">Clarifying questions</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#interview-practice">Interview practice</a></li></ol>
+            </section>
+            <article class="sticky-note"><h3>Remember</h3><p>Creating an index doesn't mean it's used. The plan is the proof.</p></article>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>
