@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: scaling PostgreSQL - progression, table partitioning vs sharding, schema migrations, and integrating search and analytics.">
+  <title>Scaling PostgreSQL: Partitioning and Sharding | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="pg-scaling-partitioning">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">Scaling PostgreSQL</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · PostgreSQL</p>
+          <h1>Scaling PostgreSQL: Partitioning and Sharding</h1>
+          <p>Scale one step at a time. Partitioning keeps one cluster manageable; sharding splits ownership across clusters and should come last.</p>
+          <div class="hero-meta"><span class="pill">Scaling path</span><span class="pill">Partitioning</span><span class="pill">Sharding</span><span class="pill">Migrations</span><span class="pill">Search and analytics</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/pg-scaling-partitioning/postgresql-scaling-partitioning-and-alternatives.webp" aria-label="Open the PostgreSQL scaling and partitioning sheet">
+            <img src="../assets/media/topics/pg-scaling-partitioning/postgresql-scaling-partitioning-and-alternatives.webp" width="1600" height="1067" loading="eager" decoding="async" alt="Progressive PostgreSQL scale-up path, table partitioning versus sharding, specialized read stores, alternatives, and operational signals.">
+          </a>
+          <figcaption>PostgreSQL scaling, partitioning, and alternatives (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Schema → queries → indexes → tuning → pooling → scale up → cache → replicas → partition → offload → shard.</li>
+                <li>Partitioning = child tables in one cluster; it's not sharding.</li>
+                <li>Shard only when one primary's measured storage or write limit remains.</li>
+                <li>Writes scale via short transactions, batching/COPY, fewer indexes, less hot-row contention.</li>
+                <li>Migrations: expand → backfill in batches → switch → contract.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="progression">
+              <div class="section-heading"><div><h2>Scaling progression</h2></div></div>
+              <ol>
+                <li>Correct normalized schema and constraints.</li>
+                <li>Measure slow queries and app bottlenecks.</li>
+                <li>Fix query shapes; add selective indexes.</li>
+                <li>Keep statistics fresh; tune memory/storage conservatively.</li>
+                <li>Bounded connection pool.</li>
+                <li>Scale the primary up while economical.</li>
+                <li>Cache repeated hot reads.</li>
+                <li>Read replicas with freshness-aware routing.</li>
+                <li>Partition large tables.</li>
+                <li>Move specialized reads to search, analytics, cache, object storage.</li>
+                <li>Shard only at a measured single-primary limit.</li>
+              </ol>
+            </section>
+
+            <section class="section-card" id="partitioning">
+              <div class="section-heading"><div><h2>Partitioning vs sharding</h2></div></div>
+              <pre>CREATE TABLE events (
+  id BIGINT NOT NULL, user_id BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL, payload JSONB NOT NULL
+) PARTITION BY RANGE (created_at);
+
+CREATE TABLE events_2026_10 PARTITION OF events
+  FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');</pre>
+              <ul class="lead-list">
+                <li><strong>Partitioning -</strong> time retention, partition pruning, smaller indexes, drop/detach old data fast, manageable big tables. Still one cluster.</li>
+                <li><strong>Sharding -</strong> ownership across clusters with routing. Costs: cross-shard joins/transactions, global uniqueness, resharding, multi-shard migrations, hot shards/tenants, harder backup/failover/ops.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="migrations">
+              <div class="section-heading"><div><h2>Migrations and integrations</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Schema migrations -</strong> additive first, batched backfills, readers that handle both shapes, low-impact constraint validation, switch writes, drop old columns later. Never one giant transaction.</li>
+                <li><strong>Search -</strong> PG full-text for modest needs; CDC/outbox to Elasticsearch/OpenSearch for relevance, analyzers, facets.</li>
+                <li><strong>Analytics -</strong> no unbounded scans on the OLTP primary; stream to a warehouse/read model or use an isolated replica.</li>
+                <li><strong>Media -</strong> bytes in object storage, metadata in PG.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost</th></tr></thead>
+                  <tbody>
+                    <tr><td>PostgreSQL as core DB</td><td>Relational model, SQL, constraints, transactions</td><td>Not ideal for every KV/search/analytics/blob load</td></tr>
+                    <tr><td>Cache</td><td>Lowest latency, offload</td><td>Invalidation, staleness, stampedes</td></tr>
+                    <tr><td>Table partitioning</td><td>Pruning, retention, smaller indexes</td><td>Planning/ops overhead; one cluster</td></tr>
+                    <tr><td>Application sharding</td><td>Scales storage and writes</td><td>Cross-shard ops, complexity</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Partition explosion -</strong> planning/memory overhead → coarser partitions, ensure pruning.</li>
+                <li><strong>Wrong partition key -</strong> queries scan many partitions → align with retention and dominant filters.</li>
+                <li><strong>Premature sharding -</strong> prove a primary limit first.</li>
+                <li><strong>Hot shard -</strong> better key, isolate big tenant, split hot key, cache, rate limit.</li>
+                <li><strong>Migration locks hot table -</strong> expand/contract, bounded backfill, lock timeouts.</li>
+                <li><strong>Search overloads OLTP -</strong> external search via CDC/outbox.</li>
+                <li><strong>Analytics overloads primary -</strong> warehouse or isolated replica.</li>
+                <li><strong>Media in database -</strong> backups and I/O balloon → object storage.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Partition or shard?</summary><p>Partition when one cluster can own the data but a big table needs pruning/retention. Shard when one primary's measured storage or write capacity isn't enough.</p></details>
+                <details class="recall-card"><summary>How do you scale PostgreSQL reads?</summary><p>Queries + indexes first, cache hot reads, then replicas with freshness-aware routing. Writes and fresh reads stay on primary.</p></details>
+                <details class="recall-card"><summary>How do you scale PostgreSQL writes?</summary><p>Short transactions, batch/COPY, drop needless indexes, reduce hot rows, partition for ops, then shard by a query-local key.</p></details>
+                <details class="recall-card"><summary>Run a schema migration on a hot table?</summary><p>Expand-contract: additive change, batched backfill, dual-shape readers, low-impact validation, switch, remove later.</p></details>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

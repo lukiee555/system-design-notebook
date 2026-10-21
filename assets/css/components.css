@@ -318,24 +318,7 @@
   padding: 0.65rem 0.72rem;
   box-shadow: none;
 }
-.toc-list {
-  display: grid;
-  gap: 0.35rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.toc-list a {
-  display: block;
-  padding: 0.35rem 0.45rem;
-  border-radius: 8px;
-  color: var(--muted);
-  text-decoration: none;
-}
-.toc-list a:hover {
-  background: var(--surface-muted);
-  color: var(--ink);
-}
+
 .callout {
   padding: 0.9rem 1rem;
   border-left: 4px solid var(--accent);

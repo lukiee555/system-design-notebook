@@ -42,6 +42,15 @@
             <a href="#data-modeling" style="--group:#f472b6">Data Modeling <span class="count">3</span></a>
             <a href="#db-indexing" style="--group:#f59e0b">Database Indexing <span class="count">5</span></a>
             <a href="#caching-in-depth" style="--group:#38bdf8">Caching in Depth <span class="count">5</span></a>
+            <a href="#sharding-in-depth" style="--group:#a3e635">Sharding in Depth <span class="count">5</span></a>
+            <a href="#consistent-hashing-in-depth" style="--group:#fb923c">Consistent Hashing in Depth <span class="count">5</span></a>
+            <a href="#cap-theorem-in-depth" style="--group:#f87171">CAP Theorem in Depth <span class="count">4</span></a>
+            <a href="#common-patterns" style="--group:#e879f9">Common Patterns <span class="count">1</span></a>
+
+            <a href="#scaling-reads" style="--group:#34d399">Scaling Reads <span class="count">5</span></a>
+            <a href="#scaling-reads-bitly" style="--group:#2dd4bf">Scaling Reads: Bitly <span class="count">5</span></a>
+
+            <a href="#postgresql" style="--group:#60a5fa">PostgreSQL <span class="count">5</span></a>
           </nav>
         </section>
 
@@ -285,6 +294,318 @@
                 <li>Per-field TTLs for a product page.</li>
                 <li>50K QPS → 12K origin QPS; ~80 GB memory.</li>
                 <li>Single-flight reads, outbox invalidation writes.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="sharding-in-depth" style="--group:#a3e635">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>Sharding in Depth</h2><span class="count">5 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="sharding-fundamentals.html">
+              <h3>When and Why to Shard</h3>
+              <ul>
+                <li>Prove the limit first; shard scales capacity, not availability.</li>
+                <li>Partition vs shard vs replica.</li>
+                <li>Shard count = max(storage, writes, reads) × headroom.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="shard-key-strategies.html">
+              <h3>Shard Keys and Strategies</h3>
+              <ul>
+                <li>Cardinality, balance, locality, stability.</li>
+                <li>Hash default, range for order, directory for flexibility.</li>
+                <li>Logical buckets, never <code>hash % N</code>.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="sharded-queries.html">
+              <h3>Routing and Cross-Shard Operations</h3>
+              <ul>
+                <li>Versioned shard map + MOVED redirects.</li>
+                <li>Global queries → derived views.</li>
+                <li>Saga + outbox before 2PC.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="resharding-and-hotspots.html">
+              <h3>Hotspots and Resharding</h3>
+              <ul>
+                <li>Hot key stays on one owner.</li>
+                <li>Hash-prefix time keys; isolate giant tenants.</li>
+                <li>Snapshot + CDC + validate + epoch cutover.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="sharding-walkthrough.html">
+              <h3>Sharding Walkthrough</h3>
+              <ul>
+                <li>Social platform sharded by <code>hash(user_id)</code>.</li>
+                <li>4096 buckets, 48 shards, CDC-derived globals.</li>
+                <li>Online split with epoch 44.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="consistent-hashing-in-depth" style="--group:#fb923c">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>Consistent Hashing in Depth</h2><span class="count">5 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="ch-ring-basics.html">
+              <h3>Hash Ring Fundamentals</h3>
+              <ul>
+                <li>Modulo remaps ~N/(N+1); ring moves ~1/(N+1).</li>
+                <li>Key → first token clockwise, O(log T).</li>
+                <li>Slots, rendezvous, jump as alternatives.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="ch-virtual-nodes.html">
+              <h3>Virtual Nodes, Weights, and Hot Keys</h3>
+              <ul>
+                <li>Vnodes fix structural skew, not hot keys.</li>
+                <li>Weight tokens by the real bottleneck.</li>
+                <li>Hot key copies = hot QPS ÷ node QPS.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="ch-routing-replication.html">
+              <h3>Ring Routing, Replication, and Failover</h3>
+              <ul>
+                <li>Replicas on distinct physical nodes and zones.</li>
+                <li>Versioned epochs + MOVED redirects.</li>
+                <li>Placement ≠ consistency.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="ch-membership-changes.html">
+              <h3>Membership Changes and Rebalancing</h3>
+              <ul>
+                <li>Join / drain lifecycle with validation.</li>
+                <li>Timeout = suspicion, not removal.</li>
+                <li>Copy + catch-up + epoch + rollback.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="ch-design-walkthrough.html">
+              <h3>Elastic Cache Walkthrough</h3>
+              <ul>
+                <li>1B keys, 10 → 50 nodes, weighted vnodes.</li>
+                <li>91 GB vs 909 GB moved per added node.</li>
+                <li>Routing SDK + membership service.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="cap-theorem-in-depth" style="--group:#f87171">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>CAP Theorem in Depth</h2><span class="count">4 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="cap-fundamentals.html">
+              <h3>What CAP Actually Says</h3>
+              <ul>
+                <li>Only matters during a partition.</li>
+                <li>C = linearizable; A = every healthy node responds.</li>
+                <li>Choose CP or AP per operation.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="cap-consistency-models.html">
+              <h3>Consistency Models, ACID, and PACELC</h3>
+              <ul>
+                <li>CAP C ≠ ACID C.</li>
+                <li>Weakest model that protects the rule.</li>
+                <li>Else: latency vs consistency.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="cap-quorums-conflicts.html">
+              <h3>Quorums, Consensus, and Conflicts</h3>
+              <ul>
+                <li><code>R + W &gt; N</code> is necessary, not sufficient.</li>
+                <li>Majority + fencing tokens stop split brain.</li>
+                <li>LWW, vectors, CRDTs, escrow.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="cap-ticket-booking.html">
+              <h3>CAP Walkthrough: Ticket Booking</h3>
+              <ul>
+                <li>Catalog AP, seats CP, payment saga.</li>
+                <li>Minority returns 503, never double books.</li>
+                <li>Timeout = unknown outcome.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="common-patterns" style="--group:#e879f9">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>Common Patterns</h2><span class="count">1 topic</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="common-patterns.html">
+              <h3>Common Patterns for Scaling Systems</h3>
+              <ul>
+                <li>8 problems: realtime, long tasks, contention, reads, writes, blobs, workflows, proximity.</li>
+                <li>Each with its go-to pattern and trade-off.</li>
+                <li>Plus a pattern selection guide.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="scaling-reads" style="--group:#34d399">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>Scaling Reads</h2><span class="count">5 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="scaling-reads.html">
+              <h3>Scaling Reads: Diagnose and Design</h3>
+              <ul>
+                <li>Measure the saturated resource first.</li>
+                <li>Freshness budget decides each layer.</li>
+                <li>Offload math and the full read path.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="sr-database-optimization.html">
+              <h3>Database Read Optimization</h3>
+              <ul>
+                <li><code>EXPLAIN</code>, indexes, no N+1.</li>
+                <li>Keyset pagination, scale up.</li>
+                <li>Denormalize, materialized views, read models.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="sr-read-replicas.html">
+              <h3>Read Replicas</h3>
+              <ul>
+                <li>More read capacity, not write.</li>
+                <li>Lag and read-after-write tokens.</li>
+                <li>Failover with fencing.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="sr-multi-level-caching.html">
+              <h3>Multi-Level Caching</h3>
+              <ul>
+                <li>Browser → CDN → L1 → L2 → DB.</li>
+                <li>Keys, TTL + jitter, versions.</li>
+                <li>Stampede, hot keys, outages.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="sr-cdn-sharding.html">
+              <h3>CDN, Sharding, Origin Protection</h3>
+              <ul>
+                <li>Edge headers and origin shield.</li>
+                <li>Query-aligned shards; avoid scatter-gather.</li>
+                <li>Per-tier metrics and limits.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="scaling-reads-bitly" style="--group:#2dd4bf">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>Scaling Reads: Bitly URL Shortener</h2><span class="count">5 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="bitly-overview.html">
+              <h3>Bitly: Requirements, Data, and API</h3>
+              <ul>
+                <li>Full-stack whiteboard; create vs redirect journeys.</li>
+                <li><code>short_code</code> PK, REST API, status codes.</li>
+                <li>Frontend RADIO.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="bitly-read-path.html">
+              <h3>Bitly Read Path</h3>
+              <ul>
+                <li>Edge → Redis → DB → 302.</li>
+                <li>302 vs 301, expiry, negative cache.</li>
+                <li>Replica lag and async analytics.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="bitly-write-path.html">
+              <h3>Bitly Write Path</h3>
+              <ul>
+                <li>Counter + Base62 vs hash + retry.</li>
+                <li>Custom aliases, idempotent creates.</li>
+                <li>SQL vs NoSQL, service split.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="bitly-scaling-estimation.html">
+              <h3>Bitly Scaling and Estimation</h3>
+              <ul>
+                <li>500 GB, 600K peak QPS, 36K origin QPS.</li>
+                <li>Stepwise scaling evolution.</li>
+                <li>Frontend and backend optimizations.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="bitly-failures-ops.html">
+              <h3>Bitly Failures and Operations</h3>
+              <ul>
+                <li>Stampede, cache outage, viral links.</li>
+                <li>Replica lag, failover, analytics backlog.</li>
+                <li>Metrics, tracing, runbook.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="topic-group" id="postgresql" style="--group:#60a5fa">
+          <div class="topic-group-head"><span class="topic-group-dot" aria-hidden="true"></span><h2>PostgreSQL</h2><span class="count">5 topics</span></div>
+          <div class="topic-grid">
+            <a class="topic-card" href="postgresql.html">
+              <h3>PostgreSQL: When and How to Use It</h3>
+              <ul>
+                <li>Default for relations, constraints, transactions.</li>
+                <li>Clarifying questions and estimation.</li>
+                <li>Architecture and when not to use it.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="pg-data-model-indexing.html">
+              <h3>Data Modeling and Indexing</h3>
+              <ul>
+                <li>Invariants as constraints.</li>
+                <li>Composite, GIN, GiST, BRIN, partial, covering.</li>
+                <li>Plan workflow and read models.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="pg-transactions-mvcc.html">
+              <h3>Transactions, MVCC, and WAL</h3>
+              <ul>
+                <li>Snapshots, dead tuples, VACUUM.</li>
+                <li>Isolation levels and write skew.</li>
+                <li>Locks, deadlocks, outbox.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="pg-replication-failover.html">
+              <h3>Replication and Failover</h3>
+              <ul>
+                <li>Async vs sync, LSN routing.</li>
+                <li>Fencing, slots, PITR.</li>
+                <li>PgBouncer pools.</li>
+              </ul>
+              <span class="topic-card-cta">Open topic →</span>
+            </a>
+            <a class="topic-card" href="pg-scaling-partitioning.html">
+              <h3>Partitioning and Sharding</h3>
+              <ul>
+                <li>11-step scaling path.</li>
+                <li>Partitioning is not sharding.</li>
+                <li>Safe migrations, search, analytics.</li>
               </ul>
               <span class="topic-card-cta">Open topic →</span>
             </a>

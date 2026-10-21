@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: PostgreSQL in system design - when to use it, requirements, estimation, architecture, and alternatives.">
+  <title>PostgreSQL: When and How to Use It | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="postgresql">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">PostgreSQL</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · PostgreSQL</p>
+          <h1>PostgreSQL: When and How to Use It</h1>
+          <p>The default product database when relationships, constraints, and multi-row transactions matter. Ask whether its guarantees and query model fit the workload - not whether it has feature X.</p>
+          <div class="hero-meta"><span class="pill">Fit</span><span class="pill">Requirements</span><span class="pill">Estimation</span><span class="pill">Architecture</span><span class="pill">Alternatives</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/postgresql/postgresql-quick-revision.webp" aria-label="Open the PostgreSQL quick revision sheet">
+            <img src="../assets/media/topics/postgresql/postgresql-quick-revision.webp" width="1600" height="1067" loading="eager" decoding="async" alt="PostgreSQL overview: fit, schema, indexes, transactions, replication, scaling, failures, and alternatives.">
+          </a>
+          <figcaption>PostgreSQL - Quick Revision (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Default when the domain has relationships, joins, integrity, uniqueness, and multi-row transactions.</li>
+                <li>Invariants live in <code>PRIMARY KEY</code>, <code>FOREIGN KEY</code>, <code>UNIQUE</code>, <code>NOT NULL</code>, <code>CHECK</code>.</li>
+                <li>Indexes from real queries; B-tree by default; composite order matches filters and sort.</li>
+                <li>MVCC: readers rarely block writers; <code>VACUUM</code> cleans dead tuples; long transactions cause bloat.</li>
+                <li><code>READ COMMITTED</code> by default; <code>SERIALIZABLE</code> aborts - retry the whole transaction.</li>
+                <li>WAL = durability, recovery, replication. Replicas are async by default and are not backups.</li>
+                <li>Scale: schema/queries → indexes → tuning + pooling → cache + replicas → partitioning → shard last.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="fit">
+              <div class="section-heading"><div><h2>What it's good at</h2></div></div>
+              <ul class="lead-list">
+                <li>Strong relationships, joins, flexible SQL.</li>
+                <li>Multi-row ACID transactions, referential integrity, uniqueness.</li>
+                <li>Mixed read/write workloads.</li>
+                <li>JSONB, arrays, full-text, geospatial - before adding another store.</li>
+                <li>A dependable source of truth feeding caches, search, analytics, events.</li>
+              </ul>
+              <p><strong>Example - social platform:</strong> users, posts, comments, follows, likes, DMs. Creating a DM thread + participants + first message is atomic; a comment must reference a real post; like/follower counts can lag; profile and feed reads must be fast.</p>
+            </section>
+
+            <section class="section-card" id="requirements">
+              <div class="section-heading"><div><h2>Clarifying questions</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Ask</th><th>Example answer</th><th>Decision</th></tr></thead>
+                  <tbody>
+                    <tr><td>Relationships and joins central?</td><td>Yes</td><td>PostgreSQL as source of truth</td></tr>
+                    <tr><td>What must be atomic?</td><td>DM creation, credit transfer</td><td>One transaction + constraints</td></tr>
+                    <tr><td>Can counters lag?</td><td>Seconds</td><td>Async derived counters</td></tr>
+                    <tr><td>Hottest reads?</td><td>Recent posts, profiles, counts</td><td>Composite indexes, selective denormalization, cache</td></tr>
+                    <tr><td>Read-after-write?</td><td>For the author</td><td>Primary/LSN routing for author; replicas for others</td></tr>
+                    <tr><td>Read:write ratio?</td><td>Read-heavy</td><td>Cache + replicas after tuning</td></tr>
+                    <tr><td>Search?</td><td>Basic now, relevance later</td><td>GIN full-text first; search engine later</td></tr>
+                    <tr><td>Large media?</td><td>Images, video</td><td>Object storage; metadata in PostgreSQL</td></tr>
+                    <tr><td>Multi-region active-active writes?</td><td>No</td><td>One write region + DR replicas</td></tr>
+                    <tr><td>RPO / RTO?</td><td>5 min / 30 min</td><td>Base backups, WAL archive, tested PITR, HA</td></tr>
+                    <tr><td>Append-heavy with retention?</td><td>13 months of events</td><td>Range partition by time</td></tr>
+                    <tr><td>One primary proven too small?</td><td>Not yet</td><td>Don't shard</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="estimation">
+              <div class="section-heading"><div><h2>Estimation</h2></div></div>
+              <pre>storage    rows × avg row + indexes + dead tuples + WAL + temp + replicas + backups
+physical   primary × (1 + replicas) + retained WAL + backups
+
+reads      backend = non-cacheable + cacheable × (1 - hit)
+           replica = backend - (fresh reads + fallback)
+
+pool       per app instance ≤ (limit - admin - replication - maintenance) ÷ max instances
+lag        WAL backlog = generation rate - apply rate   (grows forever if apply &lt; generation)
+
+example    200M posts × 800 B = 160 GB → +40% ≈ 224 GB → × 3 copies ≈ 672 GB
+           20K QPS, 70% cacheable, 90% hit → misses 1.4K + non-cacheable 6K = 7.4K
+           1K fresh → ~6.4K across replicas</pre>
+              <p>Backups aren't replicas and replicas aren't backups. Benchmark the real query mix, tail latency, and failover headroom.</p>
+            </section>
+
+            <section class="section-card" id="hld">
+              <div class="section-heading"><div><h2>Architecture</h2></div></div>
+              <pre>Clients → Gateway/LB → stateless services
+  ├─ Object storage (media)
+  ├─ Redis (hot profiles, counters, sessions)
+  └─ Read/write router + PgBouncer
+       ├─ writes / fresh reads → Primary ──WAL──▶ Read replicas
+       └─ stale-tolerant reads → Replicas
+Primary → outbox/CDC → Kafka → search / analytics / read models
+Primary → base backups + WAL archive → PITR / DR</pre>
+              <ul class="lead-list">
+                <li><strong>Profile read -</strong> Redis → replica on miss (bounded staleness) → <code>(user_id, created_at DESC)</code> → media via CDN → fill cache. Just-updated user → primary or min LSN.</li>
+                <li><strong>Create post -</strong> validate → BEGIN → insert post + outbox row → COMMIT → invalidate caches → worker publishes <code>PostCreated</code> → search/analytics/counters update.</li>
+                <li><strong>Create DM -</strong> one transaction: thread, participants, first message.</li>
+                <li><strong>Failover -</strong> detect → pick current standby → fence old → promote → update router/pools → rebuild replicas → verify archive.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="alternatives">
+              <div class="section-heading"><div><h2>When it's not the best fit</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Need</th><th>Better direction</th></tr></thead>
+                  <tbody>
+                    <tr><td>Massive simple key-value access</td><td>DynamoDB, Cassandra</td></tr>
+                    <tr><td>Global active-active writes, strong semantics</td><td>Distributed SQL</td></tr>
+                    <tr><td>Relevance search, analyzers</td><td>Elasticsearch/OpenSearch (PG stays truth)</td></tr>
+                    <tr><td>Huge analytical scans</td><td>BigQuery, Snowflake, ClickHouse</td></tr>
+                    <tr><td>Images, video, documents</td><td>Object storage + PG metadata</td></tr>
+                    <tr><td>Billions of time-series points</td><td>Time-series system (or validated extension)</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>Never say "NoSQL scales better" - name the access pattern, consistency need, and operational trade-off.</p>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>The Card Company SDE 1 (Nov 2025): what is DB indexing and how does it work?</summary><p>An auxiliary structure mapping values to row locations. B-tree speeds equality, range, order; costs space and write/WAL upkeep. Choose from predicate + order; verify with <code>EXPLAIN (ANALYZE, BUFFERS)</code>.</p></details>
+                <details class="recall-card"><summary>Target L4 (Oct 2025): order service in PostgreSQL that publishes to Kafka - keep them consistent.</summary><p>Order + outbox event in one transaction; worker publishes; consumers dedupe by event ID. No raw DB-write-then-publish.</p></details>
+                <details class="recall-card"><summary>Atlassian P40 (Oct 2024): DB for Confluence pages with tags, likes/dislikes, views, "most interacted".</summary><p>Normalize pages, users, tags, page_tags, reactions; unique (user, page) reaction; append-only events or counters; "most interacted" from an aggregate view, not live scans.</p></details>
+                <details class="recall-card"><summary>Goldman Sachs Analyst (Sep 2024): optimize the DB; when use SQL/PostgreSQL?</summary><p>Measure slow queries → fix shape + indexes → tune pools/working set → cache + replicas. PostgreSQL for joins, constraints, transactions; specialized stores for blobs, search, analytics, proven distributed writes.</p></details>
+                <details class="recall-card"><summary>Why PostgreSQL over DynamoDB or Cassandra?</summary><p>Relational joins, constraints, multi-row transactions. KV stores win when access is simple, partition-keyed, and scale/availability dominate.</p></details>
+                <details class="recall-card"><summary>What do you monitor?</summary><p>p50/p95/p99, slow queries, CPU/memory/I/O, cache hit, connections and pool waits, locks/deadlocks, transaction age, dead tuples/autovacuum/bloat, WAL/archive/lag/slots, replica cancellations, backup age, restore tests, failover time.</p></details>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

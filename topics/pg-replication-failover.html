@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: PostgreSQL replication, read routing, async vs sync, failover and fencing, replication slots, backups and PITR, connection pooling.">
+  <title>PostgreSQL Replication and Failover | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="pg-replication-failover">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">PostgreSQL Replication and Failover</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · PostgreSQL</p>
+          <h1>PostgreSQL Replication and Failover</h1>
+          <p>WAL streaming to replicas scales stale-tolerant reads; safe failover, slots, backups, and pooling keep it running.</p>
+          <div class="hero-meta"><span class="pill">Read routing</span><span class="pill">Async vs sync</span><span class="pill">remote_apply</span><span class="pill">Fencing</span><span class="pill">Slots</span><span class="pill">PITR</span><span class="pill">PgBouncer</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/pg-replication-failover/postgresql-replication-failover-and-read-scaling.webp" aria-label="Open the PostgreSQL replication and failover sheet">
+            <img src="../assets/media/topics/pg-replication-failover/postgresql-replication-failover-and-read-scaling.webp" width="1600" height="1067" loading="eager" decoding="async" alt="WAL streaming, async and sync replication, lag, read-after-write, failover fencing, PITR, pools, and metrics.">
+          </a>
+          <figcaption>PostgreSQL replication, failover, and read scaling (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Writes, locking reads, fresh reads → primary; stale-tolerant reads → replicas.</li>
+                <li>Streaming is async by default; sync needs <code>synchronous_standby_names</code>.</li>
+                <li>Read-after-write: sticky primary or minimum LSN.</li>
+                <li>Failover without fencing = split brain.</li>
+                <li>Inactive replication slot can fill the primary's disk.</li>
+                <li>Replicas aren't backups - base backup + WAL archive + restore drills.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="routing">
+              <div class="section-heading"><div><h2>Read routing</h2></div></div>
+              <pre>App → write/fresh pool → Primary ──WAL──▶ Replica 1, 2, ...
+App → stale-tolerant pool → Replicas</pre>
+              <ul class="lead-list">
+                <li><strong>Primary -</strong> writes, read-after-write, locking reads, correctness decisions.</li>
+                <li><strong>Replicas -</strong> feeds, reports, analytics, search hydration, heavy read-only work.</li>
+              </ul>
+              <ol>
+                <li>Sticky primary briefly after a write.</li>
+                <li>Return commit LSN; pick a replica that replayed it.</li>
+                <li>Wait for replay within a timeout.</li>
+                <li>Sync replication with <code>remote_apply</code>.</li>
+                <li>Update the hot object in cache after commit.</li>
+              </ol>
+            </section>
+
+            <section class="section-card" id="sync">
+              <div class="section-heading"><div><h2>Async vs sync</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Mode</th><th>Benefit</th><th>Cost</th></tr></thead>
+                  <tbody>
+                    <tr><td>Async</td><td>Low write latency; replica outage doesn't block commits</td><td>Recent commits lost on failover; stale reads</td></tr>
+                    <tr><td>Sync</td><td>Durable on standby after ack</td><td>Commit latency; possible write unavailability</td></tr>
+                    <tr><td><code>remote_apply</code></td><td>Standby has replayed and can serve it</td><td>Longest wait</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p><code>synchronous_commit = on</code> (default) = local WAL flush. Without synchronous standbys, replication stays async.</p>
+            </section>
+
+            <section class="section-card" id="failover">
+              <div class="section-heading"><div><h2>Failover</h2></div></div>
+              <ol>
+                <li>Detect primary failure.</li>
+                <li>Confirm via a reliable control plane - not one ambiguous timeout.</li>
+                <li>Pick a sufficiently current replica (by LSN/lag).</li>
+                <li>Promote it.</li>
+                <li><strong>Fence</strong> the old primary.</li>
+                <li>Update routing, discovery, proxies, pools.</li>
+                <li>Rebuild the old primary as a replica on the new timeline.</li>
+                <li>Verify writes, replication, backups, app health.</li>
+              </ol>
+            </section>
+
+            <section class="section-card" id="slots-backups">
+              <div class="section-heading"><div><h2>Slots, backups, and pools</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Replication slots -</strong> keep WAL until the consumer reads it; a stopped consumer fills the disk. Monitor activity, retained bytes, lag, disk, abandoned slots.</li>
+                <li><strong>Backups -</strong> replicas copy deletions and corruption. Use base backups, continuous WAL archiving, tested PITR, retention matching RPO/compliance, restore drills. RPO = max data loss; RTO = max recovery time.</li>
+                <li><strong>Connections -</strong> each costs memory. PgBouncer, bounded pool per node, separate primary/replica pools, size from DB concurrency, monitor waits. Transaction pooling breaks session state, temp tables, prepared statements, advisory locks.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost</th></tr></thead>
+                  <tbody>
+                    <tr><td>Async replication</td><td>Fast writes, available</td><td>Lag, possible data loss</td></tr>
+                    <tr><td>Sync replication</td><td>Stronger durability</td><td>Latency, write availability</td></tr>
+                    <tr><td>Read replicas</td><td>Scale stale-tolerant reads</td><td>No write scaling; routing</td></tr>
+                    <tr><td>PgBouncer transaction pooling</td><td>Stops connection explosions</td><td>Session features need care</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Connection storm -</strong> bounded pools, PgBouncer, admission control.</li>
+                <li><strong>Stale replica reads -</strong> primary routing, LSN token, wait, or explicit staleness.</li>
+                <li><strong>False 404 after create -</strong> warm cache, sticky primary, min LSN.</li>
+                <li><strong>Stale replica promoted -</strong> choose by LSN; align mode with RPO.</li>
+                <li><strong>Split brain -</strong> fencing, quorum/lease, single failover authority.</li>
+                <li><strong>Slot fills disk -</strong> alert on retained bytes; remove abandoned slots safely.</li>
+                <li><strong>Replica query vs WAL replay conflict -</strong> workload limits, dedicated analytics replica.</li>
+                <li><strong>Backup won't restore -</strong> automated drills, RPO/RTO checks.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>How do replicas scale reads?</summary><p>They replay WAL and serve read-only queries - more read capacity, no extra write capacity, possibly stale.</p></details>
+                <details class="recall-card"><summary>Guarantee read-after-write from a replica?</summary><p>Return the commit LSN; route only to replicas past it, else wait or use primary.</p></details>
+                <details class="recall-card"><summary>Why back up if you have replicas?</summary><p>Replicas mirror mistakes. Backups + WAL archive give history and DR.</p></details>
+                <details class="recall-card"><summary>Danger of replication slots?</summary><p>A stopped consumer makes the primary retain WAL until the disk fills.</p></details>
+                <details class="recall-card"><summary>Make failover safe?</summary><p>Promote a current replica, fence the old primary, switch routing atomically, rebuild replicas, check the timeline; match replication mode to RPO.</p></details>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: PostgreSQL transactions, MVCC, WAL, isolation levels, locking, deadlocks, outbox, and idempotency.">
+  <title>PostgreSQL Transactions, MVCC, and WAL | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="pg-transactions-mvcc">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">PostgreSQL Transactions, MVCC, WAL</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · PostgreSQL</p>
+          <h1>PostgreSQL Transactions, MVCC, and WAL</h1>
+          <p>How PostgreSQL keeps concurrent writes correct and durable - and which isolation level or lock to reach for.</p>
+          <div class="hero-meta"><span class="pill">MVCC</span><span class="pill">VACUUM</span><span class="pill">WAL</span><span class="pill">Isolation levels</span><span class="pill">Write skew</span><span class="pill">Locks</span><span class="pill">Outbox</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/pg-transactions-mvcc/postgresql-transactions-mvcc-wal-and-concurrency.webp" aria-label="Open the PostgreSQL transactions, MVCC, and WAL sheet">
+            <img src="../assets/media/topics/pg-transactions-mvcc/postgresql-transactions-mvcc-wal-and-concurrency.webp" width="1600" height="1067" loading="eager" decoding="async" alt="ACID, MVCC, WAL, PostgreSQL isolation behavior, write skew, retry logic, and concurrency decisions.">
+          </a>
+          <figcaption>PostgreSQL transactions, MVCC, WAL, and concurrency (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>MVCC: updates create new row versions; readers see a snapshot.</li>
+                <li>Long transactions block <code>VACUUM</code> → bloat.</li>
+                <li>Commit waits for local WAL flush, not replicas (unless sync standbys configured).</li>
+                <li>Repeatable Read stops phantoms in PG but allows write skew; Serializable aborts with 40001.</li>
+                <li>Known hot rows → <code>FOR UPDATE</code>; rare conflicts → version check.</li>
+                <li>DB + Kafka aren't atomic → transactional outbox.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="mvcc">
+              <div class="section-heading"><div><h2>MVCC</h2></div></div>
+              <ul class="lead-list">
+                <li>Transactions read a snapshot; an update writes a new row version while older snapshots still see the old one.</li>
+                <li>Readers rarely block writers and vice versa; two writers on the same row still wait.</li>
+                <li>Old versions become dead tuples; <code>VACUUM</code> reclaims space and maintains visibility metadata.</li>
+                <li><strong>Watch -</strong> idle-in-transaction sessions, autovacuum on high-churn tables, big updates creating far more disk/WAL than the final data.</li>
+              </ul>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Command</th><th>Does</th></tr></thead>
+                  <tbody>
+                    <tr><td><code>VACUUM</code></td><td>Marks dead space reusable, updates visibility; doesn't shrink the file</td></tr>
+                    <tr><td><code>VACUUM FULL</code></td><td>Rewrites and compacts; strong lock, extra disk</td></tr>
+                    <tr><td><code>ANALYZE</code></td><td>Refreshes planner statistics</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="wal">
+              <div class="section-heading"><div><h2>WAL write path</h2></div></div>
+              <pre>transaction → modify shared buffers → append WAL
+  → COMMIT waits for WAL durability → dirty pages flushed later
+  → WAL also feeds replicas and point-in-time recovery</pre>
+              <p>Crash recovery replays WAL; commits don't wait for data pages; streaming replication ships WAL; base backup + archived WAL = PITR. <code>synchronous_commit = on</code> guarantees local WAL flush only.</p>
+            </section>
+
+            <section class="section-card" id="isolation">
+              <div class="section-heading"><div><h2>Isolation levels</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Level</th><th>Snapshot</th><th>Prevents</th><th>Still possible</th></tr></thead>
+                  <tbody>
+                    <tr><td>Read Committed</td><td>Per statement</td><td>Dirty reads</td><td>Non-repeatable reads, phantoms, multi-statement races</td></tr>
+                    <tr><td>Repeatable Read</td><td>Per transaction</td><td>+ non-repeatable reads, phantoms (in PG)</td><td>Write skew; conflicting updates abort</td></tr>
+                    <tr><td>Serializable</td><td>Serial-equivalent</td><td>All anomalies</td><td>Aborts with <code>40001</code> - retry</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p><strong>Write skew:</strong> two transactions read the same snapshot, update different rows, both commit, and jointly break an invariant. Fix with Serializable, explicit locks, or a representation that forces a direct write conflict.</p>
+            </section>
+
+            <section class="section-card" id="locking">
+              <div class="section-heading"><div><h2>Locking patterns</h2></div></div>
+              <pre>-- pessimistic: known hot rows, frequent conflicts, short critical section
+BEGIN;
+SELECT balance FROM accounts WHERE id = $1 FOR UPDATE;
+UPDATE accounts SET balance = balance - $2 WHERE id = $1;
+COMMIT;
+
+-- optimistic: rare conflicts; 0 rows → reload/retry or 409
+UPDATE products SET stock = stock - 1, version = version + 1
+WHERE id = $1 AND stock &gt; 0 AND version = $2;
+
+-- atomic conditional decrement
+UPDATE inventory SET available = available - 1
+WHERE sku = $1 AND available &gt; 0;
+
+-- serializable retry
+on SQLSTATE 40001: rollback → backoff → retry the WHOLE transaction</pre>
+              <ul class="lead-list">
+                <li><strong>Deadlocks -</strong> lock rows in a fixed order (e.g., ascending ID), keep transactions short, no network calls inside, index lock-producing statements, timeouts, retry the victim.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="outbox">
+              <div class="section-heading"><div><h2>Outbox and idempotency</h2></div></div>
+              <pre>BEGIN;
+INSERT INTO orders (...);
+INSERT INTO outbox_events (event_id, aggregate_id, type, payload)
+  VALUES ($event_id, $order_id, 'OrderCreated', $payload);
+COMMIT;
+-- worker publishes undelivered rows; consumers dedupe by event_id
+
+CREATE UNIQUE INDEX uq_payment_idempotency ON payments(idempotency_key);</pre>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost</th></tr></thead>
+                  <tbody>
+                    <tr><td>Read Committed</td><td>High concurrency, simple</td><td>Multi-statement races need care</td></tr>
+                    <tr><td>Repeatable Read</td><td>Stable snapshot</td><td>Write skew remains</td></tr>
+                    <tr><td>Serializable</td><td>Strongest</td><td>Aborts, retries, overhead</td></tr>
+                    <tr><td>Pessimistic lock</td><td>Simple for hot rows</td><td>Blocking, deadlocks</td></tr>
+                    <tr><td>Optimistic version</td><td>No waiting</td><td>Retry waste under contention</td></tr>
+                    <tr><td>Outbox/CDC</td><td>Reliable decoupling</td><td>Eventual, more parts</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Long idle transaction -</strong> blocks vacuum → timeouts, monitor transaction age.</li>
+                <li><strong>Bloat -</strong> dead tuples pile up → tune autovacuum, shorten transactions, rebuild only when measured.</li>
+                <li><strong>Autovacuum falls behind -</strong> transaction-ID risk → per-table tuning, more workers, less churn.</li>
+                <li><strong>Hot-row contention -</strong> atomic updates, sharded counters, serialize only the hot key.</li>
+                <li><strong>Lost update -</strong> conditional update, row lock, or version column.</li>
+                <li><strong>Deadlock -</strong> deterministic order, short transactions, retry.</li>
+                <li><strong>Serializable retry storm -</strong> backoff, bounded attempts, idempotency.</li>
+                <li><strong>External call in transaction -</strong> commit first, then outbox/compensation.</li>
+                <li><strong>DB row and Kafka diverge -</strong> outbox + idempotent consumer.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Stop two buyers taking the last item?</summary><p>Atomic conditional update or short <code>FOR UPDATE</code>; zero rows → fail. Idempotency for retries.</p></details>
+                <details class="recall-card"><summary>Why can Repeatable Read still break an invariant?</summary><p>Write skew: same snapshot, different rows, both commit. Use Serializable, locks, or force a direct conflict.</p></details>
+                <details class="recall-card"><summary>Handle Serializable failures?</summary><p><code>40001</code> is expected: rollback, back off, retry the entire transaction with an idempotency boundary.</p></details>
+                <details class="recall-card"><summary>What causes table bloat?</summary><p>Updates/deletes leave dead tuples; long transactions, weak autovacuum, high churn, bad fill factor delay cleanup.</p></details>
+                <details class="recall-card"><summary>Does a commit wait for replicas?</summary><p>Not by default - only local WAL flush, unless <code>synchronous_standby_names</code> is set.</p></details>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>

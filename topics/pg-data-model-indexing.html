@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Topic notes: PostgreSQL data modeling, query-first index design, index types, query plans, and read models.">
+  <title>PostgreSQL Data Modeling and Indexing | System Design Notebook</title>
+
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/layout.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/notes.css">
+  <link rel="stylesheet" href="../assets/css/visualizations.css">
+  <link rel="stylesheet" href="../assets/css/print.css">
+</head>
+<body data-site-root="../" data-page-id="pg-data-model-indexing">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="site-shell">
+    <aside class="site-sidebar" id="site-sidebar" aria-label="Notebook navigation"></aside>
+    <div class="site-main">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:.65rem;min-width:0">
+          <button class="icon-button mobile-menu-button" type="button" data-mobile-menu aria-label="Open navigation">Menu</button>
+          <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="../index.html"><span>Home</span></a><span aria-hidden="true">/</span><a href="index.html">Topics</a><span aria-hidden="true">/</span><span aria-current="page">PostgreSQL Data Modeling and Indexing</span></nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:.55rem">
+          <button class="icon-button no-print" type="button" data-open-search>Search</button>
+          <button class="icon-button no-print" type="button" data-print-page>Print</button>
+        </div>
+      </header>
+      <main id="main-content" class="page-wrap">
+        <section class="hero">
+          <p class="hero-kicker">Topic · PostgreSQL</p>
+          <h1>PostgreSQL Data Modeling and Indexing</h1>
+          <p>Model entities and invariants first, index from real queries, read the plan, and precompute only proven hot reads.</p>
+          <div class="hero-meta"><span class="pill">Constraints</span><span class="pill">Composite indexes</span><span class="pill">GIN / GiST / BRIN</span><span class="pill">EXPLAIN</span><span class="pill">Keyset pagination</span><span class="pill">Read models</span></div>
+        </section>
+
+        <figure class="media-frame" id="cheat-sheet" style="max-width:960px;margin:1.3rem auto 0">
+          <a href="../assets/media/topics/pg-data-model-indexing/postgresql-data-model-indexing-and-query-tuning.webp" aria-label="Open the PostgreSQL data modeling and indexing sheet">
+            <img src="../assets/media/topics/pg-data-model-indexing/postgresql-data-model-indexing-and-query-tuning.webp" width="1600" height="1067" loading="eager" decoding="async" alt="Social-platform schema, index selection, composite-index rules, query plans, query shaping, and denormalized read models.">
+          </a>
+          <figcaption>PostgreSQL data modeling, indexing, and query tuning (tap to view)</figcaption>
+        </figure>
+
+        <div class="page-grid" style="margin-top:1.3rem">
+          <div class="content-stack">
+            <section class="note-sheet" id="quick-revision">
+              <h2>Quick Revision</h2>
+              <ul class="revision-list">
+                <li>Normalize first; constraints are the correctness boundary.</li>
+                <li>Composite index: equality → range → order; leftmost prefix matters.</li>
+                <li>An index doesn't guarantee an index scan - read the plan.</li>
+                <li>No N+1, no <code>SELECT *</code>, keyset not deep <code>OFFSET</code>.</li>
+                <li>Derived counters and views are rebuildable copies, not the truth.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="schema">
+              <div class="section-heading"><div><h2>Schema and invariants</h2></div></div>
+              <pre>users(id PK, email UNIQUE NOT NULL, name, created_at TIMESTAMPTZ)
+posts(id PK, user_id FK→users, body CHECK(length&gt;0), created_at)
+comments(id PK, post_id FK→posts, user_id FK→users, body, created_at)
+follows(follower_id, followee_id, PK(both), CHECK(follower_id &lt;&gt; followee_id))
+likes(user_id, target_type CHECK IN('post','comment'), target_id, PK(all three))
+dm_threads(id PK) · dm_participants(thread_id, user_id, PK(both))</pre>
+              <ul class="lead-list">
+                <li>Normalize to avoid duplicated truth; denormalize only proven hot reads.</li>
+                <li>Express invariants as constraints whenever the DB can.</li>
+                <li>One authoritative value - cached counters are derived.</li>
+                <li><code>TIMESTAMPTZ</code> for real instants; surrogate IDs when natural keys are big/mutable/sensitive, but keep natural uniqueness.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="indexes">
+              <div class="section-heading"><div><h2>Query-first indexes</h2></div></div>
+              <pre>-- recent posts for a user
+WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20
+CREATE INDEX idx_posts_user_created ON posts(user_id, created_at DESC);
+
+-- login lookup
+CREATE UNIQUE INDEX idx_users_email ON users(email);
+
+-- comments on a post
+CREATE INDEX idx_comments_post_created ON comments(post_id, created_at ASC);</pre>
+              <p><code>user_id</code> narrows by equality, <code>created_at</code> is pre-sorted inside it, so PostgreSQL stops after 20 entries.</p>
+              <ul class="lead-list">
+                <li>Equality first, then range, then order/group columns.</li>
+                <li><code>(a, b, c)</code> serves <code>a</code>, <code>(a, b)</code>, <code>(a, b, c)</code> - usually not <code>b</code> alone.</li>
+                <li>Don't stack overlapping indexes without measuring write and storage cost.</li>
+              </ul>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Type</th><th>Best fit</th><th>Caveat</th></tr></thead>
+                  <tbody>
+                    <tr><td>B-tree</td><td>Equality, range, order, MIN/MAX</td><td>Default; weak for containment/text</td></tr>
+                    <tr><td>Hash</td><td>Equality only</td><td>B-tree usually more versatile</td></tr>
+                    <tr><td>GIN</td><td>Arrays, JSONB containment, full-text</td><td>Large, costly writes</td></tr>
+                    <tr><td>GiST</td><td>Geo, ranges, nearest-neighbor</td><td>Operator-class specific</td></tr>
+                    <tr><td>SP-GiST</td><td>Tries, quadtrees</td><td>Specialized</td></tr>
+                    <tr><td>BRIN</td><td>Huge tables ordered on disk (time)</td><td>Useless for random data</td></tr>
+                    <tr><td>Partial</td><td>Hot subset (active rows)</td><td>Query must imply predicate</td></tr>
+                    <tr><td>Covering (<code>INCLUDE</code>)</td><td>Skip heap fetch</td><td>Bigger, more write work</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <pre>CREATE INDEX ON posts(created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX ON posts USING GIN (to_tsvector('english', body));
+CREATE INDEX ON events USING BRIN (created_at);
+CREATE INDEX ON posts(user_id, created_at DESC) INCLUDE (body);</pre>
+            </section>
+
+            <section class="section-card" id="plans">
+              <div class="section-heading"><div><h2>Query-plan workflow</h2></div></div>
+              <ol>
+                <li>Find the slow endpoint and its exact SQL.</li>
+                <li>Capture latency, rows returned/scanned, CPU, I/O, concurrency.</li>
+                <li><code>EXPLAIN</code>, then <code>EXPLAIN (ANALYZE, BUFFERS)</code> safely.</li>
+                <li>Look for big seq scans, estimate/actual mismatch, nested loops on large inputs, costly sorts/hashes, heap fetches, per-row queries, disk reads.</li>
+                <li>Change one thing: query, index, stats, schema, or precompute.</li>
+                <li>Re-measure the whole endpoint.</li>
+              </ol>
+              <ul class="lead-list">
+                <li>N+1 → join, batch, <code>WHERE id = ANY($1)</code>.</li>
+                <li>Only needed columns; no functions on indexed columns when a range works.</li>
+                <li>Filter early; short transactions; prepared statements and batching.</li>
+              </ul>
+              <pre>WHERE user_id = $1 AND (created_at, id) &lt; ($2, $3)
+ORDER BY created_at DESC, id DESC LIMIT 20;   -- keyset pagination</pre>
+            </section>
+
+            <section class="section-card" id="read-models">
+              <div class="section-heading"><div><h2>Denormalization and read models</h2></div></div>
+              <p>For measured join/aggregate bottlenecks with a defined freshness contract: <code>follower_count</code>, <code>post_count</code>, leaderboards, materialized reports, CDC/outbox read models.</p>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Update via</th><th>Freshness</th><th>Strength</th><th>Cost</th></tr></thead>
+                  <tbody>
+                    <tr><td>Same transaction</td><td>Immediate</td><td>Correct</td><td>More write work, longer locks</td></tr>
+                    <tr><td>Trigger</td><td>Immediate</td><td>Centralized</td><td>Hidden coupling</td></tr>
+                    <tr><td>Outbox + worker</td><td>Near real time</td><td>Reliable events</td><td>Eventual, more machinery</td></tr>
+                    <tr><td>Scheduled refresh</td><td>Minutes-hours</td><td>Simple</td><td>Stale between runs</td></tr>
+                    <tr><td>Recompute on read + cache</td><td>Seconds-minutes</td><td>Flexible</td><td>Invalidation, stampede</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="trade-offs">
+              <div class="section-heading"><div><h2>Trade-offs</h2></div></div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead><tr><th>Choice</th><th>Benefit</th><th>Cost</th></tr></thead>
+                  <tbody>
+                    <tr><td>Normalize</td><td>One truth, no anomalies</td><td>More joins</td></tr>
+                    <tr><td>Denormalize</td><td>Fast hot reads</td><td>Duplication, sync machinery</td></tr>
+                    <tr><td>B-tree</td><td>Versatile</td><td>Write/storage overhead</td></tr>
+                    <tr><td>GIN</td><td>Containment, full-text</td><td>Large, costly updates</td></tr>
+                    <tr><td>BRIN</td><td>Tiny for correlated data</td><td>Low precision</td></tr>
+                    <tr><td>Composite</td><td>Serves filter + order</td><td>Order matters, narrow reuse</td></tr>
+                    <tr><td>Covering</td><td>Fewer heap fetches</td><td>Bigger, more writes</td></tr>
+                    <tr><td>Trigger-derived data</td><td>Immediate</td><td>Hard to evolve</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="section-card" id="failure-modes">
+              <div class="section-heading"><div><h2>Failure modes</h2></div></div>
+              <ul class="lead-list">
+                <li><strong>Missing index -</strong> full scan on growing table → selective index, verify plan.</li>
+                <li><strong>Too many indexes -</strong> costly writes, WAL, vacuum → drop unused/overlapping.</li>
+                <li><strong>Wrong composite order -</strong> can't serve filter + sort → follow the predicate.</li>
+                <li><strong>Stale statistics -</strong> bad estimates → <code>ANALYZE</code>, tune thresholds.</li>
+                <li><strong>N+1 -</strong> hundreds of round trips → join, batch, prefetch.</li>
+                <li><strong>Deep <code>OFFSET</code> -</strong> scans and discards rows → keyset.</li>
+                <li><strong>Function on indexed column -</strong> rewrite as range or justified expression index.</li>
+                <li><strong>Unbounded query -</strong> memory/temp spikes → limits, timeouts, pagination.</li>
+              </ul>
+            </section>
+
+            <section class="section-card" id="interview-practice">
+              <div class="section-heading"><div><h2>Interview practice</h2><p>Answer aloud, then reveal.</p></div></div>
+              <div class="recall-grid">
+                <details class="recall-card"><summary>Why not index every column?</summary><p>Each index costs disk, memory, WAL, maintenance, and write I/O. Index only valuable query patterns.</p></details>
+                <details class="recall-card"><summary>Index a user's recent posts query?</summary><p><code>(user_id, created_at DESC)</code>, often plus <code>id</code> as tie-breaker. Validate with the plan.</p></details>
+                <details class="recall-card"><summary>When is a sequential scan correct?</summary><p>Small table or a large fraction of rows - sequential pages beat random index lookups plus heap fetches.</p></details>
+                <details class="recall-card"><summary>Why can an index-only scan still hit the heap?</summary><p>Visibility must be checked unless the visibility map marks the page all-visible - vacuum health matters.</p></details>
+                <details class="recall-card"><summary>When add a search engine?</summary><p>Start with GIN full-text; move to Elasticsearch/OpenSearch via CDC/outbox for relevance, analyzers, facets, scale. PG stays authoritative.</p></details>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <footer class="footer">System Design Notebook <span aria-hidden="true">-</span> <span data-current-year></span></footer>
+
+  <script src="../assets/js/catalog-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+</body>
+</html>
